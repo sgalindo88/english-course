@@ -996,7 +996,7 @@ function setDiffMode(id, mode, btn) {
 }
 
 async function regenerateLesson(id) {
-  alert('Lesson regeneration requires the AI API to be connected to your Google Sheet webhook. In a live deployment, this would request a new lesson from Claude.');
+  alert('Lesson regeneration requires the AI API to be connected to your Google Sheet webhook. In a live deployment, this would request a new lesson from the AI provider.');
 }
 
 function createManualLesson() {

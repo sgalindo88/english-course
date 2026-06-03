@@ -4,7 +4,7 @@
 
 A browser-based English language learning and assessment system by **Fluentora**, designed for **adult immigrants** (ages 20--50) who lack the time or resources for formal schooling. The platform supports **one-on-one tutoring** with live video calls and asynchronous self-study.
 
-Two audiences -- **students** taking tests and completing lessons, and **teachers** marking work and managing course progress. All interfaces share a cohesive visual identity (Playfair Display + Source Serif 4 typography, cream/ink/rust palette) and integrate with Google Sheets, the Claude API, and Jitsi Meet.
+Two audiences -- **students** taking tests and completing lessons, and **teachers** marking work and managing course progress. All interfaces share a cohesive visual identity (Playfair Display + Source Serif 4 typography, cream/ink/rust palette) and integrate with Google Sheets, a pluggable AI provider (Gemini / Anthropic / OpenAI), and a student-initiated video call request system.
 
 **Live at:** [sgalindo88.github.io/fluentpath](https://sgalindo88.github.io/fluentpath/)
 
@@ -63,9 +63,9 @@ Two audiences -- **students** taking tests and completing lessons, and **teacher
 
 **Phase 1 -- Placement:** Student completes a four-skill proficiency test. The teacher marks it in the dashboard, assigns a CEFR level (A1--C2), and the student is placed into the right course tier. Students can skip the test if the teacher allows it.
 
-**Phase 2 -- Course:** Student works through a 20-day structured course with AI-generated lessons. Each day's lesson is served from the **Lesson Library** when a matching entry exists (recycling activates at 5+ entries per `(level, day)` bucket) or generated fresh by Claude if not. Freshly generated lessons are written back to the library so later students benefit from the pool. Lessons generated with teacher-specific `aiInstructions` are never recycled. All lessons are cached per student/day in localStorage so reloads don't re-bill the API. If the API is unavailable, a 5-lesson offline fallback library cycles by day and a banner notifies the student. The teacher marks submissions, tracks attendance, adjusts difficulty, and writes weekly summaries. No approval workflow -- lessons start immediately.
+**Phase 2 -- Course:** Student works through a 20-day structured course with AI-generated lessons. Each day's lesson is served from the **Lesson Library** when a matching entry exists (recycling activates at 5+ entries per `(level, day)` bucket) or generated fresh by the AI provider if not. Freshly generated lessons are written back to the library so later students benefit from the pool. Lessons generated with teacher-specific `aiInstructions` are never recycled. All lessons are cached per student/day in localStorage so reloads don't re-bill the API. If the API is unavailable, a 5-lesson offline fallback library cycles by day and a banner notifies the student. The teacher marks submissions, tracks attendance, adjusts difficulty, and writes weekly summaries. No approval workflow -- lessons start immediately.
 
-**Live video calls** are available on all student pages via an optional floating "Join Video Call" button (same as the teacher dashboard).
+**Video calls** are available on all student pages via an optional floating "Request a Video Call" button; the teacher responds from the dashboard with a meeting link (same mechanism as the teacher dashboard).
 
 ---
 
@@ -95,7 +95,7 @@ english-course/
 │   │   ├── config.local.js        # Auth tokens + dev webhook (gitignored)
 │   │   ├── api.js                 # Fetch wrapper, save overlay, SW registration, dev banner
 │   │   ├── utils.js               # Shared utilities (7 functions)
-│   │   ├── video-call.js          # Jitsi Meet optional video panel
+│   │   ├── call-request.js        # Student-initiated video call request system
 │   │   ├── i18n.js                # Level-aware Spanish translation
 │   │   └── checkpoint.js          # Session recovery / auto-save
 │   └── styles/
@@ -170,7 +170,7 @@ english-course/
 
 | # | Screen | Description |
 |---|--------|-------------|
-| 1 | **Cover** | Name, date, optional floating video call button |
+| 1 | **Cover** | Name, date, optional "Request a Video Call" button |
 | 2--3 | **Reading** | Intro + 10 MCQs on reading passages |
 | 4--5 | **Writing** | Intro + 4 tasks (passive voice, sentence combining, error correction, short writing) |
 | 6--7 | **Listening** | Intro + 4 MCQs, 1 multi-select, 1 dictation (browser TTS audio, 3-play limit) |
@@ -191,7 +191,7 @@ english-course/
 #### Key Features
 
 - **Name auto-filled** from hub, **date read-only** (auto-calculated)
-- **Optional video call** -- floating "Join Video Call" button available for live sessions with teacher; test can begin without connecting
+- **Optional video call** -- floating "Request a Video Call" button sends a request to the teacher, who replies with a meeting link; test can begin without connecting
 - **Listening stop button** with cumulative play-time tracking (main passage and dictation)
 - **Speech recording** on all speaking questions (Q21-Q24) with live transcript and pronunciation feedback
 - **Required + skip** -- all writing/speaking text fields are required, with "Skip this question" checkbox
@@ -205,7 +205,7 @@ english-course/
 
 ### 4. `student-course.html` -- Daily Lesson
 
-**Purpose:** AI-powered 90-minute daily lesson with 7 sequential activities. Generated by Claude API, personalised to CEFR level and day, requiring teacher approval.
+**Purpose:** AI-powered 90-minute daily lesson with 7 sequential activities. Generated by the configured AI provider, personalised to CEFR level and day. No approval workflow -- lessons start immediately.
 
 #### 7-Step Lesson
 
@@ -223,7 +223,7 @@ english-course/
 
 - **Name, date, and level auto-filled** from hub; level grid locked when assigned by teacher
 - **No approval workflow** -- lessons start immediately
-- **Optional video call** -- floating "Join Video Call" button available for live sessions with teacher; lesson can begin without connecting
+- **Optional video call** -- floating "Request a Video Call" button sends a request to the teacher, who replies with a meeting link; lesson can begin without connecting
 - **Level-aware translation** -- A1/A2 gets bilingual AI content via `_es` keys; B1/B2 gets tap-to-translate
 - **41+ translated static strings** covering all UI text (step titles, buttons, status, feedback, labels)
 - **`tr()` runtime translation** for JS-set text at A1/A2 level
@@ -231,7 +231,7 @@ english-course/
 - **Listening stop button** with cumulative play-time tracking
 - **Pronunciation drills** use toggle recording (user clicks to start and stop); `continuous: true` mode prevents auto-cutoff; null-safe cleanup in `finishLesson`
 - **Browser compatibility check** -- speaking step detects unsupported browsers, shows bilingual warning, and disables recording buttons
-- **AI lesson generation via Apps Script → Claude API** -- each day's lesson is generated fresh by `claude-haiku-4-5` for the student's level, day, and topic; cached in localStorage by `fp_lesson_<level>_d<day>` so reloads don't re-bill the API
+- **AI lesson generation via Apps Script → AI provider** -- each day's lesson is generated fresh by the configured provider (default `gemini-2.5-flash`) for the student's level, day, and topic; cached in localStorage by `fp_lesson_<level>_d<day>` so reloads don't re-bill the API
 - **Offline fallback library** -- 5 distinct lesson templates (appointments, shopping, workplace, health, family/community) cycled by `(day - 1) % 5`; an "offline" banner appears when the API is unavailable so the teacher notices
 - **Lesson generation timeout** -- 60-second `FP.api.get` abort prevents infinite loading; falls through to the offline library on error
 - **Session recovery** -- auto-saves lesson content and progress every 5s
@@ -272,9 +272,9 @@ Pulled directly from the "Initial Test Results" Google Sheets tab (no email past
 
 #### Key Features
 
-- **Video call** -- floating Jitsi panel joins the same room as the student
+- **Video call** -- pending call-request panel; teacher pastes a meeting link (Zoom, WhatsApp, Meet, etc.) that the student can then join
 - **localStorage persistence** under `fluentpath_teacher` key with auto-save; textarea values (notes, feedback) also restored on reload
-- **AI-powered weekly summaries** via Apps Script proxy (server-side Claude API call)
+- **AI-powered weekly summaries** via Apps Script proxy (server-side AI provider call)
 - **Webhook URL hardcoded** -- no user configuration needed
 - **No approval workflow** -- lessons start directly, approvals panel removed
 - **Auto-populate grading** -- placement test and lesson submissions auto-load when panels open; previously graded scores restored from Google Sheets (individual question scores, breakdowns, notes) with localStorage fallback
@@ -326,13 +326,13 @@ Pulled directly from the "Initial Test Results" Google Sheets tab (no email past
 - **CSS custom properties** -- all colour variables (ink, paper, cream, rust, gold, etc.) defined once
 - **Google Fonts import** -- Playfair Display + Source Serif 4 loaded once instead of per-page
 
-### `video-call.js` -- Video Calls
+### `call-request.js` -- Video Call Requests
 
-- **Optional mode:** Floating panel (collapsed button, expandable iframe) used by all student pages and the teacher dashboard
-- **Required mode:** (Available but unused) Embeds Jitsi Meet inline; "Begin" button disabled until connected; connection status bar shows progress
-- **Deterministic room names:** `FluentPath-{name}-{YYYYMMDD}` -- teacher and student auto-join the same room
-- **Controls:** Copy link, pop-out to new tab, minimise, end call
-- **Re-init guard:** `init()` runs once and returns `false` on subsequent calls; use `updateRoom(studentName, date)` to change the room without full re-initialization
+- **`CallRequest.init({page, dayNumber})`** -- wired into the hub, placement test, and daily lesson on `DOMContentLoaded`
+- **Student flow:** floating "Request a Video Call" button POSTs `request_video_call`; button becomes "Request pending…" with a manual Refresh link
+- **Join link:** when the teacher sends a link, a green banner appears at the top of the page with "Join Call" + Dismiss; the floating button transforms to "Join Teacher's Call"
+- **Polling:** on page load + tab focus + manual refresh (no continuous polling); student can Dismiss to clear the request at any time
+- **Teacher side:** the dashboard surfaces pending requests and lets the teacher paste a meeting link (Zoom, WhatsApp, Meet, etc.) or Mark as Done
 
 ### `mobile.css` -- Mobile-First Enhancements
 
@@ -420,31 +420,37 @@ Print-inspired, academic, warm -- designed to feel calm and professional for adu
 
 Full schema documented in [`GOOGLE_SHEETS_SCHEMA.md`](GOOGLE_SHEETS_SCHEMA.md).
 
-### Claude API (Anthropic) -- via Apps Script Proxy
+### AI Provider (pluggable) -- via Apps Script Proxy
 
-| File | Model | Usage |
-|------|-------|-------|
-| `student-course.html` | `claude-haiku-4-5` (default; configurable via `CLAUDE_MODEL` Script Property) | AI-generated daily lessons via the `generate_lesson` GET action; cached per (level, day) in localStorage |
-| `examiner-panel.html` | `claude-sonnet-4-20250514` | AI-drafted weekly summary narratives (routed through Apps Script `ai_summary` action) |
+All AI calls run **server-side** through the Apps Script proxy (keeping the API key off the client) and are routed through a small provider-adapter layer. Switch providers by changing Script Properties only — no code change. Supported providers: **Gemini** (default), **Anthropic**, and **OpenAI**.
+
+| File | Usage |
+|------|-------|
+| `student-course.html` | AI-generated daily lessons via the `generate_lesson` GET action; cached per (level, day) in localStorage |
+| `examiner-panel.html` | AI-drafted weekly summary narratives (routed through the Apps Script `ai_summary` action) |
 
 **Setup:** the Apps Script project requires these **Script Properties** (Project Settings → Script Properties → Add):
 
 | Property | Required | Description |
 |----------|----------|-------------|
-| `CLAUDE_API_KEY` | Yes | Anthropic API key (`sk-ant-...`) |
+| `AI_API_KEY` | Yes | API key for the chosen provider |
 | `APP_SECRET` | Yes | Random 32-char string shared with frontend `config.local.js` |
 | `TEACHER_SECRET` | Yes | Separate secret for teacher-only endpoints |
-| `CLAUDE_MODEL` | No | Override default model (default: `claude-haiku-4-5`) |
+| `AI_PROVIDER` | No | `gemini` (default), `anthropic`, or `openai` |
+| `AI_MODEL` | No | Override default model (default: `gemini-2.5-flash`) |
 
 See the header comment in `apps-script.js` for full deployment steps.
 
-### Jitsi Meet (Video Calls)
+### Video Calls (student-initiated request system)
 
-| File | Mode | Room Name |
-|------|------|-----------|
-| `student-initial-test.html` | Optional (floating panel) | `FluentPath-{name}-{YYYYMMDD}` |
-| `student-course.html` | Optional (floating panel) | `FluentPath-{name}-{YYYYMMDD}` |
-| `examiner-panel.html` | Optional (floating panel) | `FluentPath-{name}-{YYYYMMDD}` |
+Students request a call via a floating "Request a Video Call" button; the teacher responds from the dashboard with their preferred link (Zoom, WhatsApp, Meet, etc.). See the CHANGELOG `[0.44.0]` entry for the full flow.
+
+| File | Mechanism |
+|------|-----------|
+| `index.html` | "Request a Video Call" floating button (via `call-request.js`) |
+| `student-initial-test.html` | "Request a Video Call" floating button (via `call-request.js`) |
+| `student-course.html` | "Request a Video Call" floating button (via `call-request.js`) |
+| `examiner-panel.html` | Pending-request panel + Send Link / Mark as Done controls |
 
 ### Web Speech API (Browser)
 
@@ -503,11 +509,11 @@ The full database schema is documented in [`GOOGLE_SHEETS_SCHEMA.md`](GOOGLE_SHE
 - **Code Quality:** ESLint 9 + Prettier + vitest (45 tests); CI/CD via GitHub Actions
 - **Backend:** Google Apps Script (web app) with clasp version control (`npm run clasp:deploy`)
 - **Offline:** Service worker with cache-first app shell, stale-while-revalidate API, IndexedDB POST queue
-- **AI:** Claude API (Haiku for lessons, Sonnet for summaries) via server-side proxy
+- **AI:** Pluggable provider (Gemini / Anthropic / OpenAI) via server-side proxy; default `gemini-2.5-flash` for lessons and summaries
 - **Database:** Google Sheets (10 tabs) with CacheService + TextFinder optimisation
 - **Styling:** CSS custom properties (WCAG AA), Flexbox, CSS Grid, media queries, shared `mobile.css`
 - **Fonts:** Google Fonts (Playfair Display, Source Serif 4)
-- **APIs:** Claude API, Google Apps Script, Formspree, Web Speech API (TTS + STT), Jitsi Meet
+- **APIs:** AI provider (Gemini / Anthropic / OpenAI), Google Apps Script, Formspree, Web Speech API (TTS + STT)
 - **Storage:** localStorage (checkpoints, preferences, achievements), Google Sheets (shared persistence)
 - **Translation:** Level-aware Spanish with 4 modes (spanish-primary, tap-to-translate, teacher-gated, english-only)
 - **Email:** Formspree (test results) + MailApp (teacher/student notifications)

@@ -248,7 +248,7 @@ async function beginLesson() {
 
 // ══════════════════════════════════════════════════════
 // AI LESSON GENERATION
-// Calls the Apps Script proxy (which calls Claude) to generate a fresh lesson
+// Calls the Apps Script proxy (which calls the AI provider) to generate a fresh lesson
 // per (level, day). Cached in localStorage so reloads don't waste API calls.
 // Falls back to a varied offline library if anything goes wrong.
 // ══════════════════════════════════════════════════════
@@ -269,7 +269,7 @@ async function generateLesson() {
     }
   } catch (_) { /* ignore parse errors */ }
 
-  // 2. Call Apps Script → Claude
+  // 2. Call Apps Script → AI provider
   // Passing the student name lets apps-script fold the teacher's
   // difficulty profile, focus areas, and AI instructions into the prompt.
   try {

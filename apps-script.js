@@ -5,11 +5,12 @@
      1. Open script.google.com → create or edit project
      2. Paste this entire file into Code.gs
      3. Set Script Properties (Project Settings → gear icon → Script Properties):
-          CLAUDE_API_KEY:  sk-ant-... (your key)
+          AI_API_KEY:      (API key for your chosen AI provider)
           APP_SECRET:      (random 32-char string — shared with frontend config.local.js)
           TEACHER_SECRET:  (separate random string — only given to teachers)
         Optional:
-          CLAUDE_MODEL:    claude-haiku-4-5 (default; or claude-sonnet-4-6 for higher quality)
+          AI_PROVIDER:     gemini (default) | anthropic | openai
+          AI_MODEL:        model id (default: gemini-2.5-flash)
      4. Deploy → New deployment → Web app
         - Execute as: Me
         - Who has access: Anyone
@@ -21,11 +22,120 @@
    ═══════════════════════════════════════════════════════════════ */
 
 // ══════════════════════════════════════════════════════
-// CLAUDE API CONFIG
+// AI PROVIDER CONFIG (pluggable)
+// ──────────────────────────────────────────────────────
+// Switch providers via Script Properties — no code change:
+//   AI_PROVIDER : 'gemini' (default) | 'anthropic' | 'openai'
+//   AI_API_KEY  : the key for that provider
+//   AI_MODEL    : model id (default: gemini-2.5-flash)
+// Each adapter knows how to build the request and pull the text
+// out of that provider's response shape.
 // ══════════════════════════════════════════════════════
-var CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-var CLAUDE_DEFAULT_MODEL = 'claude-haiku-4-5';
-var CLAUDE_MAX_TOKENS = 4096;
+var AI_DEFAULT_MODEL = 'gemini-2.5-flash';
+var AI_MAX_TOKENS = 4096;
+
+var AI_PROVIDERS = {
+  gemini: {
+    buildRequest: function(apiKey, model, prompt, maxTokens) {
+      return {
+        url: 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent',
+        options: {
+          method:      'post',
+          contentType: 'application/json',
+          headers:     { 'x-goog-api-key': apiKey },
+          payload:     JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: maxTokens }
+          }),
+          muteHttpExceptions: true
+        }
+      };
+    },
+    extractText: function(body) {
+      var c = body && body.candidates && body.candidates[0];
+      var parts = c && c.content && c.content.parts;
+      return parts && parts[0] && parts[0].text;
+    },
+    extractError: function(body, code) {
+      return (body && body.error && body.error.message) || ('HTTP ' + code);
+    }
+  },
+
+  anthropic: {
+    buildRequest: function(apiKey, model, prompt, maxTokens) {
+      return {
+        url: 'https://api.anthropic.com/v1/messages',
+        options: {
+          method:      'post',
+          contentType: 'application/json',
+          headers:     { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+          payload:     JSON.stringify({ model: model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+          muteHttpExceptions: true
+        }
+      };
+    },
+    extractText: function(body) {
+      var c = body && body.content && body.content[0];
+      return c && c.type === 'text' && c.text;
+    },
+    extractError: function(body, code) {
+      return (body && body.error && body.error.message) || ('HTTP ' + code);
+    }
+  },
+
+  openai: {
+    buildRequest: function(apiKey, model, prompt, maxTokens) {
+      return {
+        url: 'https://api.openai.com/v1/chat/completions',
+        options: {
+          method:      'post',
+          contentType: 'application/json',
+          headers:     { 'Authorization': 'Bearer ' + apiKey },
+          payload:     JSON.stringify({ model: model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+          muteHttpExceptions: true
+        }
+      };
+    },
+    extractText: function(body) {
+      var c = body && body.choices && body.choices[0];
+      return c && c.message && c.message.content;
+    },
+    extractError: function(body, code) {
+      return (body && body.error && body.error.message) || ('HTTP ' + code);
+    }
+  }
+};
+
+// Single entry point for all AI generation. Reads the active provider/key/model
+// from Script Properties, dispatches to the matching adapter, and returns the
+// generated text. Throws on misconfiguration or API error.
+function aiGenerate(prompt) {
+  var props    = PropertiesService.getScriptProperties();
+  var apiKey   = props.getProperty('AI_API_KEY');
+  if (!apiKey) throw new Error('AI_API_KEY not set in Script Properties');
+
+  var provider = (props.getProperty('AI_PROVIDER') || 'gemini').toLowerCase();
+  var adapter  = AI_PROVIDERS[provider];
+  if (!adapter) throw new Error('Unknown AI_PROVIDER "' + provider + '" (expected gemini, anthropic, or openai)');
+
+  var model = props.getProperty('AI_MODEL') || AI_DEFAULT_MODEL;
+  var req   = adapter.buildRequest(apiKey, model, prompt, AI_MAX_TOKENS);
+
+  var resp = UrlFetchApp.fetch(req.url, req.options);
+  var code = resp.getResponseCode();
+  var body = JSON.parse(resp.getContentText());
+
+  if (code >= 400) throw new Error('AI API error (' + provider + '): ' + adapter.extractError(body, code));
+
+  var text = adapter.extractText(body);
+  if (!text) throw new Error('AI API returned no text content (' + provider + ')');
+  return text;
+}
+
+// Strip a leading/trailing markdown code fence the model may have added around JSON.
+function stripJsonFences(text) {
+  return String(text).replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+}
 
 // ══════════════════════════════════════════════════════
 // AUTHENTICATION
@@ -941,17 +1051,16 @@ function handleGetAllSubmissions(studentName) {
 
 // ── GET: generate_lesson ───────────────────────────────
 // Checks the Lesson Library first (decisions 3–6, 9); falls back to fresh
-// Claude generation when needed. Returns { found, lesson, source } where
+// AI generation when needed. Returns { found, lesson, source } where
 // source is 'library' | 'rewrite' | 'fresh'.
 function handleGenerateLesson(level, day, topic, allowSpanish, studentName) {
   if (!level || !day || !topic) {
     return { error: 'Missing required parameter (level, day, topic)' };
   }
 
-  var props  = PropertiesService.getScriptProperties();
-  var apiKey = props.getProperty('CLAUDE_API_KEY');
-  if (!apiKey) return { error: 'CLAUDE_API_KEY not set in Script Properties' };
-  var model = props.getProperty('CLAUDE_MODEL') || CLAUDE_DEFAULT_MODEL;
+  if (!PropertiesService.getScriptProperties().getProperty('AI_API_KEY')) {
+    return { error: 'AI_API_KEY not set in Script Properties' };
+  }
 
   // Load teacher's difficulty profile for this student (if any)
   var difficulty = null;
@@ -983,7 +1092,7 @@ function handleGenerateLesson(level, day, topic, allowSpanish, studentName) {
         var closest = findClosestEntry(entries, difficulty || {});
         if (closest && closest.lesson) {
           try {
-            var rewritten = rewriteLessonForDifficulty(closest.lesson, difficulty || {}, level, day, apiKey, model);
+            var rewritten = rewriteLessonForDifficulty(closest.lesson, difficulty || {}, level, day);
             try { addToLibrary(level, day, rewritten, difficulty || {}, studentName); } catch (e) {}
             return { found: true, lesson: rewritten, source: 'rewrite' };
           } catch (rewriteErr) {
@@ -1002,30 +1111,8 @@ function handleGenerateLesson(level, day, topic, allowSpanish, studentName) {
   var prompt = buildLessonPrompt(level, day, topic, allowSpanish, difficulty, studentName);
 
   try {
-    var resp = UrlFetchApp.fetch(CLAUDE_API_URL, {
-      method:      'post',
-      contentType: 'application/json',
-      headers:     { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      payload:     JSON.stringify({ model: model, max_tokens: CLAUDE_MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }),
-      muteHttpExceptions: true
-    });
-
-    var code = resp.getResponseCode();
-    var body = JSON.parse(resp.getContentText());
-
-    if (code >= 400) {
-      var msg = (body && body.error && body.error.message) || ('HTTP ' + code);
-      return { error: 'Claude API error: ' + msg };
-    }
-    if (!body.content || !body.content.length || body.content[0].type !== 'text') {
-      return { error: 'Claude API returned no text content' };
-    }
-
-    // Strip markdown code fences if Claude wrapped the JSON despite instructions
-    var text = body.content[0].text
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/```\s*$/, '')
-      .trim();
+    // Strip markdown code fences if the model wrapped the JSON despite instructions
+    var text = stripJsonFences(aiGenerate(prompt));
 
     var lesson;
     try { lesson = JSON.parse(text); }
@@ -1044,7 +1131,7 @@ function handleGenerateLesson(level, day, topic, allowSpanish, studentName) {
   }
 }
 
-/** Build the lesson prompt sent to Claude. Mirrors the structure expected by student-course.html. */
+/** Build the lesson prompt sent to the AI provider. Mirrors the structure expected by student-course.html. */
 function buildLessonPrompt(level, day, topic, allowSpanish, difficulty, studentName) {
   var levelInfo = {
     'A1': { name: 'Beginner',           theme: 'Everyday Survival' },
@@ -1514,10 +1601,10 @@ function incrementTimesServed(entryId) {
 }
 
 /**
- * Option C: rewrite a source lesson for a new difficulty profile via Claude.
+ * Option C: rewrite a source lesson for a new difficulty profile via the AI provider.
  * Cheaper than full generation — the topic, structure, and activities stay identical.
  */
-function rewriteLessonForDifficulty(sourceLesson, targetDifficulty, level, day, apiKey, model) {
+function rewriteLessonForDifficulty(sourceLesson, targetDifficulty, level, day) {
   var defaultMinWords = { A1: 20, A2: 40, B1: 80, B2: 120, C1: 180, C2: 250 }[level] || 80;
   var guidance        = buildTeacherGuidanceBlock(targetDifficulty, level, defaultMinWords);
 
@@ -1530,21 +1617,7 @@ function rewriteLessonForDifficulty(sourceLesson, targetDifficulty, level, day, 
     (guidance ? 'TARGET DIFFICULTY:\n' + guidance + '\n\n' : '') +
     'LEVEL: ' + level + '  DAY: ' + day;
 
-  var resp = UrlFetchApp.fetch(CLAUDE_API_URL, {
-    method:      'post',
-    contentType: 'application/json',
-    headers:     { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    payload:     JSON.stringify({ model: model, max_tokens: CLAUDE_MAX_TOKENS, messages: [{ role: 'user', content: prompt }] }),
-    muteHttpExceptions: true
-  });
-
-  var code = resp.getResponseCode();
-  var body = JSON.parse(resp.getContentText());
-  if (code >= 400) throw new Error('Claude API error on rewrite: ' + ((body.error && body.error.message) || code));
-  if (!body.content || !body.content.length || body.content[0].type !== 'text') throw new Error('Empty rewrite response');
-
-  var text = body.content[0].text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-  return JSON.parse(text);
+  return JSON.parse(stripJsonFences(aiGenerate(prompt)));
 }
 
 
@@ -1795,12 +1868,13 @@ function handleHealth() {
 
   // Check Script Properties
   var props = PropertiesService.getScriptProperties();
-  checks.claude_key = props.getProperty('CLAUDE_API_KEY') ? 'set' : 'missing';
+  checks.ai_key = props.getProperty('AI_API_KEY') ? 'set' : 'missing';
+  checks.ai_provider = (props.getProperty('AI_PROVIDER') || 'gemini').toLowerCase();
   checks.app_secret = props.getProperty('APP_SECRET') ? 'set' : 'missing';
 
   // Metadata
   checks.timestamp = new Date().toISOString();
-  checks.status = (checks.sheets === 'ok' && checks.claude_key === 'set' && checks.app_secret === 'set')
+  checks.status = (checks.sheets === 'ok' && checks.ai_key === 'set' && checks.app_secret === 'set')
     ? 'healthy' : 'degraded';
 
   return checks;
@@ -1966,6 +2040,18 @@ var POST_HANDLERS = {
       throw new Error('Could not parse audio request body. postData type: ' + (e.postData ? e.postData.type : 'none'));
     }
     return { _json: handleSaveAudio(audioBody) };
+  },
+
+  // Teacher weekly-summary AI draft (gated by TEACHER_ACTIONS). Prompt arrives as
+  // a JSON body { prompt }; routes through the pluggable AI provider.
+  ai_summary: function(params, e) {
+    var prompt;
+    if (e && e.postData && e.postData.contents) {
+      try { prompt = JSON.parse(e.postData.contents).prompt; } catch (parseErr) { prompt = null; }
+    }
+    prompt = prompt || params['prompt'];
+    if (!prompt) throw new Error('Missing prompt for ai_summary');
+    return { _json: { summary: aiGenerate(prompt) } };
   },
 
   save_progress: function(params) {
@@ -2149,7 +2235,7 @@ function authorizeScript() {
   // SpreadsheetApp — already authorized from initial setup
   SpreadsheetApp.getActiveSpreadsheet();
 
-  // UrlFetchApp — needed for Claude API calls
+  // UrlFetchApp — needed for AI provider API calls
   try { UrlFetchApp.fetch('https://www.google.com', { muteHttpExceptions: true }); } catch (e) {}
 
   // DriveApp — needed for audio file storage

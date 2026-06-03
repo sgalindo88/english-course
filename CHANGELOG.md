@@ -4,6 +4,36 @@ All notable changes to the FluentPath platform are documented here.
 
 ---
 
+## [0.45.0] - 2026-06-02
+
+### Changed — Pluggable AI provider (Gemini / Anthropic / OpenAI)
+
+Replaced the hard-coded Anthropic/Claude integration with a provider-agnostic layer. The AI provider, key, and model are now chosen entirely through Script Properties — no code change to switch. **Default provider is Gemini (`gemini-2.5-flash`).**
+
+#### Script Properties (breaking — reconfigure before redeploy)
+- **Removed** `CLAUDE_API_KEY` and `CLAUDE_MODEL`
+- **Added** `AI_API_KEY` (required), `AI_PROVIDER` (optional: `gemini` default / `anthropic` / `openai`), `AI_MODEL` (optional, default `gemini-2.5-flash`)
+
+#### Apps Script (`apps-script.js`)
+- **`AI_PROVIDERS` registry** — one adapter per provider, each defining `buildRequest` (URL, headers, payload) and `extractText` / `extractError` for that provider's response shape:
+  - **gemini** — `…/v1beta/models/{model}:generateContent`, `x-goog-api-key` header, text at `candidates[0].content.parts[0].text`
+  - **anthropic** — `…/v1/messages`, `x-api-key` + `anthropic-version`, text at `content[0].text`
+  - **openai** — `…/v1/chat/completions`, `Authorization: Bearer`, text at `choices[0].message.content`
+- **`aiGenerate(prompt)`** — single dispatcher: reads `AI_PROVIDER` / `AI_API_KEY` / `AI_MODEL`, calls the matching adapter, handles HTTP/error uniformly, returns the generated text
+- **`stripJsonFences(text)`** — shared helper to strip markdown code fences the model may wrap around JSON
+- **`handleGenerateLesson`** and **`rewriteLessonForDifficulty`** — now generate via `aiGenerate` instead of an inline Anthropic `UrlFetchApp` call
+- **New `ai_summary` POST handler** — implements the previously-missing teacher weekly-summary draft action through `aiGenerate`; returns `{ summary }`. The dashboard's "✨ AI Draft Summary" button now works (no frontend change needed)
+- **`handleHealth`** — `claude_key` check renamed to `ai_key`; added `ai_provider` to the report
+- **Header comment + `authorizeScript`** — updated to describe the pluggable provider setup
+
+#### Docs
+- **README.md** — rewrote the AI integration section (new Script Properties table, provider list), updated Technology Stack / APIs, and corrected lingering Jitsi references to the current student-initiated call-request system (`call-request.js`)
+
+#### Frontend
+- Comment/alert strings in `student-lesson.js` and `examiner-panel.js` updated from "Claude" to "the AI provider" (no behavioural change; the API key stays server-side)
+
+---
+
 ## [0.44.0] - 2026-04-12
 
 ### Changed — Replace Jitsi with Video Call Request System
