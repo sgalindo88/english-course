@@ -152,11 +152,11 @@ describe('create_account + login handlers', () => {
     )).toThrow(/already exists/);
   });
 
-  it('rate-limits after 5 failed attempts per email', () => {
+  it('rate-limits after 10 failed attempts per email', () => {
     const fp = loadAppsScriptAuth({ PW_PEPPER: 'pep' });
     fp.POST_HANDLERS.create_account(
       { email: 'maria@x.com', student_name: 'Maria', password: 'pw123', role: 'student' }, {});
-    for (let i = 0; i < 5; i++) fp.POST_HANDLERS.login({ email: 'maria@x.com', password: 'x' }, {});
+    for (let i = 0; i < 10; i++) fp.POST_HANDLERS.login({ email: 'maria@x.com', password: 'x' }, {});
     const limited = fp.POST_HANDLERS.login({ email: 'maria@x.com', password: 'pw123' }, {});
     expect(limited._json.ok).toBe(false);
     expect(limited._json.error).toMatch(/too many/i);

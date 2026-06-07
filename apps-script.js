@@ -361,6 +361,83 @@ function revokeSession(token) {
 
 function cacheKeyForSession(token) { return 'session_' + token; }
 
+// ── Password reset tokens ─────────────────────────────
+// A reset token is a random UUID emailed to the user; we store only its
+// SHA-256 hash (high-entropy → one fast digest is enough, no iteration).
+var RESET_TTL_MS = 60 * 60 * 1000; // reset link valid 1 hour
+
+function hashToken(token) {
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256, pwPepper() + String(token), Utilities.Charset.UTF_8);
+  return bytesToHex(digest);
+}
+
+/** Create a reset-token row for an email and return the RAW token (to email out). */
+function createResetToken(email) {
+  var token = Utilities.getUuid() + Utilities.getUuid();
+  var now = new Date();
+  var headers = HEADERS['PasswordResets'];
+  getOrCreateSheet('PasswordResets', headers).appendRow([
+    hashToken(token), String(email).toLowerCase().trim(),
+    now.toISOString(), new Date(now.getTime() + RESET_TTL_MS).toISOString(), ''
+  ]);
+  return token;
+}
+
+/** Validate a raw reset token → { email, _row } if valid (unused/unexpired), else null. */
+function consumeResetToken(token) {
+  token = String(token || '').trim();
+  if (!token) return null;
+  var headers = HEADERS['PasswordResets'];
+  var sheet = getOrCreateSheet('PasswordResets', headers);
+  if (sheet.getLastRow() < 2) return null;
+  var matches = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1)
+    .createTextFinder(hashToken(token)).matchEntireCell(true).findAll();
+  if (!matches.length) return null;
+  var rowNum = matches[matches.length - 1].getRow();
+  var rowData = sheet.getRange(rowNum, 1, 1, headers.length).getValues()[0];
+  var row = {};
+  for (var j = 0; j < headers.length; j++) row[headers[j]] = rowData[j];
+  if (truthy(row.used)) return null;
+  var exp = new Date(row.expires_at).getTime();
+  if (!exp || exp < new Date().getTime()) return null;
+  return { email: String(row.email).toLowerCase().trim(), _row: rowNum };
+}
+
+/** Mark a reset-token row used (single-use). */
+function markResetUsed(rowNum) {
+  var headers = HEADERS['PasswordResets'];
+  var sheet = getOrCreateSheet('PasswordResets', headers);
+  sheet.getRange(rowNum, headers.indexOf('used') + 1).setValue('true');
+}
+
+/** Set a new password (fresh salt + hash) on an existing account row. */
+function setAccountPassword(account, newPassword) {
+  var headers = HEADERS['Accounts'];
+  var sheet = getOrCreateSheet('Accounts', headers);
+  var salt = Utilities.getUuid();
+  sheet.getRange(account._row, headers.indexOf('pw_salt') + 1).setValue(salt);
+  sheet.getRange(account._row, headers.indexOf('pw_hash') + 1).setValue(hashPassword(newPassword, salt));
+}
+
+/** Revoke every active session for an email (used after a password reset). */
+function revokeSessionsForEmail(email) {
+  email = String(email).toLowerCase().trim();
+  var headers = HEADERS['Sessions'];
+  var sheet = getOrCreateSheet('Sessions', headers);
+  if (sheet.getLastRow() < 2) return;
+  var emailCol = headers.indexOf('email');
+  var tokenCol = headers.indexOf('token');
+  var revokedCol = headers.indexOf('revoked');
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][emailCol]).toLowerCase().trim() === email && !truthy(data[i][revokedCol])) {
+      sheet.getRange(i + 2, revokedCol + 1).setValue('true');
+      try { CacheService.getScriptCache().remove(cacheKeyForSession(String(data[i][tokenCol]))); } catch (e) {}
+    }
+  }
+}
+
 /** Resolve the caller's session from request params (token in `session`). */
 function resolveSession(params) {
   return validateSession(String((params && params['session']) || '').trim());
@@ -507,6 +584,31 @@ function loginRateLimited(email) {
   } catch (e) { return false; }
 }
 
+/** Per-email reset-request throttle (3 reset emails / hour). */
+function resetRateLimited(email) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var key = 'reset_rl_' + String(email).toLowerCase().trim();
+    var count = parseInt(cache.get(key) || '0', 10);
+    if (count >= 3) return true;
+    cache.put(key, String(count + 1), 60 * 60);
+    return false;
+  } catch (e) { return false; }
+}
+
+/** Email a password-reset link (to the correct site for the account's role). */
+function sendPasswordResetEmail(email, role, token) {
+  var base = (String(role).toLowerCase() === 'teacher') ? teacherBaseUrl() : studentBaseUrl();
+  var link = base + '/?reset=' + encodeURIComponent(token);
+  sendNotificationEmail(
+    email,
+    'FluentPath: Reset your password',
+    '<p>We received a request to reset your FluentPath password.</p>' +
+    '<p><a href="' + link + '">Click here to set a new password</a> — this link expires in 1 hour.</p>' +
+    '<p>If you did not request this, you can ignore this email; your password is unchanged.</p>'
+  );
+}
+
 /** Parse a JSON POST body, or null. Handlers may receive creds via body. */
 function jsonBody(e) {
   if (e && e.postData && e.postData.contents) {
@@ -522,7 +624,7 @@ function paramOrBody(params, body, key) {
 }
 
 /** POST actions reachable without an existing session (login bootstraps one). */
-var SESSIONLESS_POST = { 'login': true, 'logout': true };
+var SESSIONLESS_POST = { 'login': true, 'logout': true, 'request_reset': true, 'reset_password': true };
 
 /** GET actions that require a TEACHER session once AUTH_ENFORCED is on. */
 var TEACHER_GET_ACTIONS = {
@@ -922,6 +1024,10 @@ var HEADERS = {
   'Sessions': [
     'token', 'email', 'role', 'student_name',
     'issued_at', 'expires_at', 'revoked'
+  ],
+  // Auth: one-time, expiring password-reset tokens (token stored HASHED).
+  'PasswordResets': [
+    'token_hash', 'email', 'created_at', 'expires_at', 'used'
   ]
 };
 
@@ -2414,6 +2520,37 @@ function handleSaveAudio(body) {
  *  - undefined/void    → send { result: 'success' }
  */
 var POST_HANDLERS = {
+  // ── Auth: self-service password reset (email-link flow) ──
+  // Both are sessionless (app-token only). request_reset ALWAYS returns a
+  // generic success so it can't be used to probe which emails have accounts.
+  request_reset: function(params, e) {
+    var body = jsonBody(e);
+    var email = String(paramOrBody(params, body, 'email')).trim().toLowerCase();
+    if (email && !resetRateLimited(email)) {
+      var account = findAccountByEmail(email);
+      if (account && truthy(account.active)) {
+        sendPasswordResetEmail(email, account.role, createResetToken(email));
+      }
+    }
+    return { _json: { ok: true } };
+  },
+
+  reset_password: function(params, e) {
+    var body = jsonBody(e);
+    var token = String(paramOrBody(params, body, 'token')).trim();
+    var newPassword = String(paramOrBody(params, body, 'password'));
+    if (!token || !newPassword) return { _json: { ok: false, error: 'Invalid reset link.' } };
+    if (newPassword.length < 6) return { _json: { ok: false, error: 'Password must be at least 6 characters.' } };
+    var reset = consumeResetToken(token);
+    if (!reset) return { _json: { ok: false, error: 'This reset link is invalid or has expired.' } };
+    var account = findAccountByEmail(reset.email);
+    if (!account) return { _json: { ok: false, error: 'Account not found.' } };
+    setAccountPassword(account, newPassword);
+    markResetUsed(reset._row);
+    revokeSessionsForEmail(reset.email); // force re-login everywhere with the new password
+    return { _json: { ok: true } };
+  },
+
   // ── Auth: login / logout / create_account ──
   // login needs only the app token (no session yet). Generic failure message;
   // per-email rate limited since this endpoint is internet-reachable.

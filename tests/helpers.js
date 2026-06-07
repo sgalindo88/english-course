@@ -211,7 +211,8 @@ export function loadAppsScriptAuth(props = {}) {
   let fetchHandler = () => ({ getResponseCode: () => 200, getContentText: () => '{}' });
   globalThis.UrlFetchApp = { fetch: (url, opts) => fetchHandler(url, opts) };
   globalThis.DriveApp = { getRootFolder: () => ({}) };
-  globalThis.MailApp = { sendEmail: () => {} };
+  const mail = [];
+  globalThis.MailApp = { sendEmail: (opts) => { mail.push(opts); } };
   globalThis.Utilities = {
     getUuid: () => `uuid-${++uuidN}`,
     base64Encode: () => '',
@@ -235,6 +236,10 @@ export function loadAppsScriptAuth(props = {}) {
     safeEquals: globalThis.safeEquals,
     truthy: globalThis.truthy,
     findAccountByEmail: globalThis.findAccountByEmail,
+    createResetToken: globalThis.createResetToken,
+    consumeResetToken: globalThis.consumeResetToken,
+    setAccountPassword: globalThis.setAccountPassword,
+    revokeSessionsForEmail: globalThis.revokeSessionsForEmail,
     createSession: globalThis.createSession,
     validateSession: globalThis.validateSession,
     revokeSession: globalThis.revokeSession,
@@ -259,5 +264,6 @@ export function loadAppsScriptAuth(props = {}) {
     _cache: cache,
     _ss: ss,
     _setFetch: (fn) => { fetchHandler = fn; },
+    _mail: mail,
   };
 }
