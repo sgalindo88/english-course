@@ -3,155 +3,136 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FluentPath · Coming Soon</title>
-<meta name="description" content="FluentPath — your journey to English fluency. Something new is on the way.">
-
-<!-- Open Graph / social preview -->
-<meta property="og:title" content="FluentPath · Coming Soon">
-<meta property="og:description" content="Your journey to fluency starts here. Something new is on the way.">
-<meta property="og:type" content="website">
-
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,600&display=swap" rel="stylesheet">
-
-<style>
-  :root{
-    --ink:#1a1208;
-    --paper:#f5f0e8;
-    --cream:#ede8dc;
-    --rust:#b8471e;
-    --gold:#c9933a;
-    --rule:#c8bfa8;
-    --muted:#5a5040;
-  }
-
-  *{box-sizing:border-box;margin:0;padding:0;}
-
-  html,body{height:100%;}
-
-  body{
-    font-family:'Source Serif 4',Georgia,serif;
-    font-weight:300;
-    line-height:1.7;
-    color:var(--ink);
-    background:var(--paper);
-    background-image:
-      radial-gradient(circle at 18% 22%, rgba(201,147,58,0.10), transparent 42%),
-      radial-gradient(circle at 82% 78%, rgba(184,71,30,0.08), transparent 45%);
-    min-height:100vh;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    padding:32px 24px;
-    position:relative;
-    overflow:hidden;
-  }
-
-  /* subtle paper grain corners */
-  body::before,
-  body::after{
-    content:"";
-    position:absolute;
-    width:280px;height:280px;
-    border:1px solid var(--rule);
-    opacity:.35;
-    pointer-events:none;
-  }
-  body::before{top:-90px;left:-90px;border-radius:0 0 100% 0;}
-  body::after{bottom:-90px;right:-90px;border-radius:100% 0 0 0;}
-
-  .wrap{
-    max-width:560px;
-    width:100%;
-    text-align:center;
-    position:relative;
-    z-index:1;
-  }
-
-  h1,h2,h3{font-family:'Playfair Display',Georgia,serif;font-weight:700;line-height:1.15;}
-
-  .eyebrow{
-    font-family:'Playfair Display',Georgia,serif;
-    font-style:italic;
-    font-size:14px;
-    letter-spacing:.16em;
-    text-transform:uppercase;
-    color:var(--rust);
-    margin-bottom:22px;
-  }
-
-  .logo{
-    font-size:clamp(48px,11vw,82px);
-    margin-bottom:14px;
-  }
-  .logo .accent{color:var(--rust);font-style:italic;}
-
-  .tagline{
-    color:var(--muted);
-    font-style:italic;
-    font-size:clamp(17px,2.6vw,20px);
-    max-width:420px;
-    margin:0 auto;
-  }
-
-  .divider{
-    width:64px;height:2px;
-    background:var(--gold);
-    margin:30px auto;
-  }
-
-  .headline{
-    font-size:clamp(24px,4.4vw,34px);
-    margin-bottom:14px;
-  }
-  .headline em{color:var(--rust);}
-
-  .blurb{
-    color:var(--muted);
-    font-size:16px;
-    max-width:440px;
-    margin:0 auto;
-  }
-
-  .footer{
-    margin-top:54px;
-    color:var(--muted);
-    font-size:14px;
-  }
-  .footer a{color:var(--rust);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .2s;}
-  .footer a:hover{border-color:var(--rust);}
-
-  @media (max-width:480px){
-    body::before,body::after{width:180px;height:180px;}
-  }
-</style>
+<title>FluentPath · Your Journey to Fluency</title>
+<link rel="stylesheet" href="src/styles/theme.css">
+<link rel="stylesheet" href="src/styles/hub.css">
+<link rel="stylesheet" href="src/styles/mobile.css">
 </head>
 <body>
 
-  <main class="wrap">
-    <p class="eyebrow">Something new is on the way</p>
-
-    <h1 class="logo">Fluent<span class="accent">Path</span></h1>
-    <p class="tagline">Your journey to fluency starts here.</p>
-
-    <div class="divider"></div>
-
-    <h2 class="headline">We're building something <em>better</em>.</h2>
-    <p class="blurb">
-      A warmer, simpler way to learn English — personalised lessons,
-      real progress, and a teacher in your corner. Check back soon.
-    </p>
-
-    <div class="footer">
-      <p>A <a href="#">Fluentora</a> programme &middot; &copy; <span id="year"></span></p>
+<!-- ═══════════════════════════════════════════════════════════
+     SCREEN 1 — Welcome / Login
+     ═══════════════════════════════════════════════════════════ -->
+<div id="screen-welcome" class="screen active">
+  <div class="container">
+    <div class="welcome-header">
+      <h1>Fluent<span class="accent">Path</span></h1>
+      <p>Your journey to fluency starts here.</p>
+      <div class="welcome-divider"></div>
     </div>
-  </main>
 
-<script>
-  document.getElementById('year').textContent = new Date().getFullYear();
-</script>
+    <div class="login-card">
+      <label for="loginEmail">Email</label>
+      <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="username" aria-label="Email">
+      <label for="loginPassword" style="display:block;margin-top:14px;">Password</label>
+      <input type="password" id="loginPassword" placeholder="Your password" autocomplete="current-password" aria-label="Password">
+      <p class="login-hint" id="loginError" style="display:none;color:var(--rust);"></p>
+      <p class="login-hint">Use the email and password your teacher gave you.</p>
+    </div>
 
+    <button class="btn-enter" id="btnEnter" onclick="enterHub()">Log In</button>
+
+    <div class="welcome-footer">
+      <p><a href="#" id="teacherLink">For teachers &rarr;</a></p>
+      <p>A <a href="#">Fluentora</a> programme</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCREEN — Paywall (gated daily course; placement test is free)
+     ═══════════════════════════════════════════════════════════ -->
+<div id="screen-paywall" class="screen">
+  <div class="container">
+    <div class="welcome-header">
+      <h1>Unlock Your Course</h1>
+      <p>Full access to your personalised daily lessons.</p>
+      <div class="welcome-divider"></div>
+    </div>
+
+    <div class="login-card">
+      <p>Your placement test is free. To begin your daily lessons, a one-time
+         payment unlocks the full course — permanently.</p>
+      <p class="login-hint" id="paywallError" style="display:none;color:var(--rust);"></p>
+    </div>
+
+    <button class="btn-enter" id="btnPay" onclick="startCheckout()">Continue to Payment</button>
+
+    <div class="welcome-footer">
+      <p><a href="#" onclick="showScreen('screen-dashboard');return false;">&larr; Back to my journey</a></p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCREEN 2 — Loading
+     ═══════════════════════════════════════════════════════════ -->
+<div id="screen-loading" class="screen">
+  <div class="container loading-center">
+    <div class="spinner"></div>
+    <p style="color:var(--muted);font-style:italic;">Looking up your progress&hellip;</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCREEN 3 — Dashboard
+     ═══════════════════════════════════════════════════════════ -->
+<div id="screen-dashboard" class="screen">
+  <div class="container">
+
+    <div class="dash-header">
+      <p class="dash-greeting">Welcome back,</p>
+      <h1 class="dash-name" id="dashName"></h1>
+      <p class="dash-subtitle" id="dashSubtitle">Here is your learning journey.</p>
+      <span class="dash-logout" onclick="logout()">Not you? Switch student</span>
+    </div>
+
+    <!-- ── Journey Timeline ── -->
+    <div class="journey">
+
+      <!-- Milestone 1: Placement Test -->
+      <div class="milestone" id="ms-test">
+        <div class="milestone-dot">1</div>
+        <div class="milestone-label">Phase One</div>
+        <div class="milestone-title">Placement Test</div>
+        <div class="milestone-desc" id="ms-test-desc">Take the English proficiency test so your teacher can find the right level for you.</div>
+        <div class="milestone-card" id="ms-test-card" style="display:none;"></div>
+      </div>
+
+      <!-- Milestone 2: Level Assignment -->
+      <div class="milestone" id="ms-level">
+        <div class="milestone-dot">2</div>
+        <div class="milestone-label">Phase One</div>
+        <div class="milestone-title">Your Level</div>
+        <div class="milestone-desc" id="ms-level-desc">After your teacher reviews the test, you will be assigned a CEFR level.</div>
+        <div class="milestone-card" id="ms-level-card" style="display:none;"></div>
+      </div>
+
+      <!-- Milestone 3: Course -->
+      <div class="milestone" id="ms-course">
+        <div class="milestone-dot">3</div>
+        <div class="milestone-label">Phase Two</div>
+        <div class="milestone-title">Your Course</div>
+        <div class="milestone-desc" id="ms-course-desc">A 20-day personalised course with daily lessons tailored to your level.</div>
+        <div class="milestone-card" id="ms-course-card" style="display:none;"></div>
+      </div>
+
+    </div>
+
+    <!-- ── CTA Section ── -->
+    <div class="cta-section" id="ctaSection"></div>
+
+    <!-- ── Achievements ── -->
+    <div id="achievementsSection" style="display:none;"></div>
+
+  </div>
+</div>
+
+<script src="src/scripts/config.js"></script>
+<script src="src/scripts/api.js"></script>
+<script src="src/scripts/utils.js"></script>
+<script src="src/scripts/hub.js"></script>
+<script src="src/scripts/call-request.js"></script>
+<script src="src/scripts/i18n.js"></script>
 </body>
 </html>
