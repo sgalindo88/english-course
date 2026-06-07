@@ -24,3 +24,43 @@ jobs:
 
       - name: Test
         run: npm test
+
+  # Propagate the shared frontend files (config/api/utils/i18n/call-request +
+  # theme/mobile CSS) from this canonical repo into the teacher repo.
+  # Dormant until you opt in: set repo variables ENABLE_TEACHER_SYNC=true and
+  # TEACHER_REPO_SLUG=<owner>/<teacher-repo>, plus a TEACHER_REPO_TOKEN secret
+  # (fine-grained PAT / deploy key with write access to the teacher repo).
+  sync-teacher:
+    needs: lint-and-test
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && vars.ENABLE_TEACHER_SYNC == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout student (canonical) repo
+        uses: actions/checkout@v4
+
+      - name: Checkout teacher repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.TEACHER_REPO_SLUG }}
+          token: ${{ secrets.TEACHER_REPO_TOKEN }}
+          path: teacher-repo
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Sync shared files into the teacher repo
+        run: node scripts/sync-shared.mjs --dest=teacher-repo
+
+      - name: Commit & push if changed
+        working-directory: teacher-repo
+        run: |
+          git config user.name "fluentpath-sync-bot"
+          git config user.email "fluentpath-sync-bot@users.noreply.github.com"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "chore: sync shared files from student repo @ ${GITHUB_SHA::7}"
+            git push
+          else
+            echo "Teacher repo already in sync."
+          fi

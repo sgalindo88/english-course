@@ -1721,6 +1721,9 @@ function speakText(text, onEnd) {
 // INIT
 // ══════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
+  // Session guard — the daily course requires a logged-in student.
+  if (FP.getSession && !FP.getSession()) { FP.redirectToLogin(); return; }
+
   document.getElementById('lessonDate').value = new Date().toISOString().split('T')[0];
   if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 

@@ -159,13 +159,34 @@ function validateToken(params) {
   return token === appSecret;
 }
 
+/**
+ * Master rollout switch. While unset/false, the legacy auth paths
+ * (APP_SECRET-only reads, TEACHER_SECRET for teacher writes) stay accepted
+ * so we can never lock ourselves out mid-migration. Flip AUTH_ENFORCED=true
+ * in Script Properties at cutover (Phase 6) to require real sessions.
+ */
+function authEnforced() {
+  return String(PropertiesService.getScriptProperties().getProperty('AUTH_ENFORCED') || '')
+    .toLowerCase() === 'true';
+}
+
 function validateTeacherToken(params) {
-  var props = PropertiesService.getScriptProperties();
-  var teacherSecret = props.getProperty('TEACHER_SECRET');
-  // If no TEACHER_SECRET is configured, fall back to APP_SECRET check only
-  if (!teacherSecret) return validateToken(params);
-  var token = String(params['teacher_token'] || '').trim();
-  return token === teacherSecret && validateToken(params);
+  // The app token is still required (a speed bump, not the real authz).
+  if (!validateToken(params)) return false;
+
+  // Primary path: a valid teacher session authorizes teacher actions.
+  var session = resolveSession(params);
+  if (session && session.role === 'teacher') return true;
+
+  // Grace path: until AUTH_ENFORCED flips, honor the legacy TEACHER_SECRET so
+  // the teacher can create the first accounts (and so we never lock out).
+  if (!authEnforced()) {
+    var teacherSecret = PropertiesService.getScriptProperties().getProperty('TEACHER_SECRET');
+    if (!teacherSecret) return true; // first-run grace (matches pre-auth behavior)
+    var token = String(params['teacher_token'] || '').trim();
+    return token === teacherSecret;
+  }
+  return false;
 }
 
 /** Actions that require teacher-level auth */
@@ -176,7 +197,8 @@ var TEACHER_ACTIONS = {
   'delete_library_entry': true,
   'ai_summary': true,
   'promote_student': true,
-  'send_call_link': true
+  'send_call_link': true,
+  'create_account': true
   // Note: update_call_status is student-callable too (they can dismiss)
   // Note: request_video_call is student-callable (only needs app token)
 };
@@ -185,6 +207,324 @@ var TEACHER_ACTIONS = {
 function isExaminerPost(params) {
   return (params['sheet_name'] || '').trim() === 'Examiner Results';
 }
+
+// ══════════════════════════════════════════════════════
+// ACCOUNTS, PASSWORDS & SESSIONS
+// ──────────────────────────────────────────────────────
+// Real gated login. The teacher creates each account (invite-only); login is
+// by email but `student_name` stays the internal data key. Sessions are
+// server-issued tokens persisted in the Sessions sheet (read-through cached).
+// ══════════════════════════════════════════════════════
+
+/** Loose truthiness for string-typed sheet cells ('true'/'1'/'yes' → true). */
+function truthy(v) {
+  var s = String(v == null ? '' : v).toLowerCase().trim();
+  return s === 'true' || s === '1' || s === 'yes';
+}
+
+/** Constant-time string compare — avoids leaking length/content via timing. */
+function safeEquals(a, b) {
+  a = String(a); b = String(b);
+  if (a.length !== b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Hex-encode a digest byte array (Apps Script bytes are signed -128..127). */
+function bytesToHex(bytes) {
+  var hex = '';
+  for (var i = 0; i < bytes.length; i++) {
+    var b = (bytes[i] + 256) % 256;
+    hex += ('0' + b.toString(16)).slice(-2);
+  }
+  return hex;
+}
+
+// Iterated SHA-256 password hashing. No bcrypt on Apps Script, so we lean on
+// (a) a server-only pepper (PW_PEPPER Script Property) — a leaked sheet alone
+// can't be brute-forced offline — and (b) many rounds. Tuned to stay well
+// under the 6-minute execution limit for ~10 invite-only users. NOT suitable
+// for public signup; see the README security caveats.
+var PW_ROUNDS = 100000;
+
+function pwPepper() {
+  return PropertiesService.getScriptProperties().getProperty('PW_PEPPER') || '';
+}
+
+function hashPassword(plain, salt) {
+  var data = String(salt) + pwPepper() + String(plain);
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256, data, Utilities.Charset.UTF_8);
+  for (var i = 1; i < PW_ROUNDS; i++) {
+    digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, digest);
+  }
+  return bytesToHex(digest);
+}
+
+function verifyPassword(plain, salt, expectedHash) {
+  return safeEquals(hashPassword(plain, salt), expectedHash);
+}
+
+// ── Account lookup ────────────────────────────────────
+/** Find the most recent account row for an email (case-insensitive), or null. */
+function findAccountByEmail(email) {
+  var headers = HEADERS['Accounts'];
+  var sheet = getOrCreateSheet('Accounts', headers);
+  if (sheet.getLastRow() < 2) return null;
+  var emailCol = headers.indexOf('email') + 1;
+  var range = sheet.getRange(2, emailCol, sheet.getLastRow() - 1, 1);
+  var matches = range.createTextFinder(String(email).trim())
+    .matchCase(false).matchEntireCell(true).findAll();
+  if (!matches.length) return null;
+  var rowNum = matches[matches.length - 1].getRow();
+  var rowData = sheet.getRange(rowNum, 1, 1, headers.length).getValues()[0];
+  var obj = { _row: rowNum };
+  for (var j = 0; j < headers.length; j++) obj[headers[j]] = rowData[j];
+  return obj;
+}
+
+// ── Session lifecycle ─────────────────────────────────
+/** Issue a session for an account. Students ~30d, teachers ~12h. */
+function createSession(account) {
+  var role = String(account.role || 'student').toLowerCase();
+  var token = Utilities.getUuid() + Utilities.getUuid();
+  var ttlMs = role === 'teacher' ? 12 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+  var now = new Date();
+  var expires = new Date(now.getTime() + ttlMs);
+  var session = {
+    token: token,
+    email: account.email,
+    role: role,
+    student_name: account.student_name,
+    issued_at: now.toISOString(),
+    expires_at: expires.toISOString(),
+    revoked: ''
+  };
+  var headers = HEADERS['Sessions'];
+  var sheet = getOrCreateSheet('Sessions', headers);
+  sheet.appendRow(headers.map(function(h) { return session[h]; }));
+  cachePut('session_' + token, session);
+  return session;
+}
+
+/** Resolve a session token → session object, or null if missing/expired/revoked. */
+function validateSession(token) {
+  token = String(token || '').trim();
+  if (!token) return null;
+
+  var cacheKey = 'session_' + token;
+  var session = cacheGet(cacheKey);
+  var fromCache = !!session;
+
+  if (!session) {
+    var headers = HEADERS['Sessions'];
+    var sheet = getOrCreateSheet('Sessions', headers);
+    if (sheet.getLastRow() < 2) return null;
+    var matches = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1)
+      .createTextFinder(token).matchEntireCell(true).findAll();
+    if (!matches.length) return null;
+    var rowNum = matches[matches.length - 1].getRow();
+    var rowData = sheet.getRange(rowNum, 1, 1, headers.length).getValues()[0];
+    session = {};
+    for (var j = 0; j < headers.length; j++) session[headers[j]] = rowData[j];
+  }
+
+  if (truthy(session.revoked)) return null;
+  var exp = new Date(session.expires_at).getTime();
+  if (!exp || exp < new Date().getTime()) return null;
+
+  if (!fromCache) cachePut(cacheKey, session);
+  return session;
+}
+
+/** Revoke a session (logout). Flips the sheet flag and drops the cache entry. */
+function revokeSession(token) {
+  token = String(token || '').trim();
+  if (!token) return;
+  var headers = HEADERS['Sessions'];
+  var sheet = getOrCreateSheet('Sessions', headers);
+  if (sheet.getLastRow() >= 2) {
+    var matches = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1)
+      .createTextFinder(token).matchEntireCell(true).findAll();
+    if (matches.length) {
+      var revokedCol = headers.indexOf('revoked') + 1;
+      sheet.getRange(matches[matches.length - 1].getRow(), revokedCol).setValue('true');
+    }
+  }
+  try { CacheService.getScriptCache().remove(cacheKeyForSession(token)); } catch (e) {}
+}
+
+function cacheKeyForSession(token) { return 'session_' + token; }
+
+/** Resolve the caller's session from request params (token in `session`). */
+function resolveSession(params) {
+  return validateSession(String((params && params['session']) || '').trim());
+}
+
+/**
+ * Server-derived effective student. A STUDENT session may only ever act as
+ * itself — closing the `?student=NAME` impersonation hole. A teacher session
+ * (or, during the AUTH_ENFORCED grace window, no session) may target any
+ * student. Pure + unit-testable.
+ */
+function resolveEffectiveStudent(session, requestedStudent) {
+  if (session && session.role === 'student') return session.student_name;
+  return requestedStudent;
+}
+
+// ── Course gating (Phase 2) ───────────────────────────
+/**
+ * Server-authoritative unlock check. Pure + string-tolerant so it survives
+ * sheet cells that come back as booleans, 'true'/'TRUE', '1', etc.
+ * Unlocked when the student has paid OR the teacher granted free access.
+ */
+function isCourseUnlocked(settingsRow) {
+  if (!settingsRow) return false;
+  return truthy(settingsRow['paid']) || truthy(settingsRow['access_granted']);
+}
+
+/**
+ * Guard the gated (paid) course path. Only real STUDENT sessions are gated —
+ * teachers (acting on behalf) and the AUTH_ENFORCED grace window pass through,
+ * preserving current behavior until cutover. Throws on a locked student.
+ */
+function enforceCourseAccess(session, studentName) {
+  if (!session || session.role !== 'student') return;
+  var settingsRow = findLastByStudent('Settings', HEADERS['Settings'], studentName);
+  if (!isCourseUnlocked(settingsRow)) throw new Error('Course locked');
+}
+
+// ── Site URLs (Script Properties; default to the current live origin so
+//    emails keep working until STUDENT_URL/TEACHER_URL are set at cutover) ──
+function studentBaseUrl() {
+  return PropertiesService.getScriptProperties().getProperty('STUDENT_URL')
+    || 'https://sgalindo88.github.io/fluentpath';
+}
+function teacherBaseUrl() {
+  return PropertiesService.getScriptProperties().getProperty('TEACHER_URL')
+    || 'https://sgalindo88.github.io/fluentpath';
+}
+
+// ── Stripe (Phase 3) ──────────────────────────────────
+// One-time payment unlocks the course permanently. The amount lives in Stripe
+// as a Price (STRIPE_PRICE_ID) — no number in the code. Apps Script doPost
+// can't read the Stripe-Signature header, so the trust anchor for unlocking is
+// a server-to-Stripe RE-FETCH of the session (verifyStripeSignature is only
+// defense-in-depth / unit coverage, applied when a signature is forwarded).
+
+/**
+ * Verify a Stripe webhook signature header (`t=...,v1=...`) against the raw
+ * payload using STRIPE_WEBHOOK_SECRET. HMAC-SHA256 over `${t}.${payload}`.
+ * Defense-in-depth only — the re-fetch in fulfillCheckout is authoritative.
+ */
+function verifyStripeSignature(payload, sigHeader) {
+  var secret = PropertiesService.getScriptProperties().getProperty('STRIPE_WEBHOOK_SECRET');
+  if (!secret) return false;
+  var t = '', v1 = '';
+  String(sigHeader || '').split(',').forEach(function(part) {
+    var idx = part.indexOf('=');
+    if (idx < 0) return;
+    var k = part.slice(0, idx).trim();
+    var v = part.slice(idx + 1).trim();
+    if (k === 't') t = v;
+    else if (k === 'v1') v1 = v;
+  });
+  if (!t || !v1) return false;
+  var bytes = Utilities.computeHmacSha256Signature(t + '.' + String(payload), secret);
+  return safeEquals(bytesToHex(bytes), v1);
+}
+
+/**
+ * Re-fetch a Checkout Session from Stripe with the secret key and, only if it
+ * reports payment_status === 'paid', mark the student's course paid. Idempotent:
+ * upsert overwrites in place and paid_at is preserved once set, so Stripe's
+ * webhook retries (and any double-delivery) are safe no-ops.
+ */
+function fulfillCheckout(sessionId) {
+  var secret = PropertiesService.getScriptProperties().getProperty('STRIPE_SECRET');
+  if (!secret || !sessionId) return false;
+  var resp = UrlFetchApp.fetch(
+    'https://api.stripe.com/v1/checkout/sessions/' + encodeURIComponent(sessionId),
+    { method: 'get', headers: { 'Authorization': 'Bearer ' + secret }, muteHttpExceptions: true });
+  if (resp.getResponseCode() >= 400) return false;
+  var session = JSON.parse(resp.getContentText());
+  if (!session || session.payment_status !== 'paid') return false;
+
+  var studentName = session.client_reference_id;
+  if (!studentName) return false;
+
+  var existing = findLastByStudent('Settings', HEADERS['Settings'], studentName) || {};
+  var data = {};
+  HEADERS['Settings'].forEach(function(h) { data[h] = existing[h] || ''; });
+  data['student_name'] = studentName;
+  data['paid'] = 'true';
+  data['paid_at'] = data['paid_at'] || new Date().toISOString(); // preserve first payment time
+  data['stripe_customer_id'] = session.customer || data['stripe_customer_id'] || '';
+  data['updated_at'] = new Date().toLocaleString();
+  upsertByStudent('Settings', HEADERS['Settings'], studentName, data);
+  cacheInvalidateStudent(studentName);
+  return true;
+}
+
+/**
+ * Webhook receiver. Reached via ?stripe=1 (no app token). Always returns a
+ * plain 200 so Stripe doesn't retry forever; unlock is gated by the re-fetch.
+ */
+function handleStripeWebhook(e) {
+  try {
+    var raw = (e && e.postData && e.postData.contents) || '';
+    var event = JSON.parse(raw);
+    // If a signature was forwarded (e.g. via a proxy), honor it; absence is
+    // expected on bare Apps Script and is not by itself a rejection.
+    var sig = (e && e.parameter && e.parameter['sig']) || '';
+    if (sig && !verifyStripeSignature(raw, sig)) {
+      return ContentService.createTextOutput('ignored');
+    }
+    if (event && event.type === 'checkout.session.completed') {
+      var obj = event.data && event.data.object;
+      if (obj && obj.id) fulfillCheckout(obj.id);
+    }
+  } catch (err) {
+    logError('stripe_webhook', '', err.message, {});
+  }
+  return ContentService.createTextOutput('ok');
+}
+
+/** Per-email login throttle (5 attempts / 15 min). login is internet-reachable. */
+function loginRateLimited(email) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var key = 'login_rl_' + String(email).toLowerCase().trim();
+    var count = parseInt(cache.get(key) || '0', 10);
+    if (count >= 5) return true;
+    cache.put(key, String(count + 1), 15 * 60);
+    return false;
+  } catch (e) { return false; }
+}
+
+/** Parse a JSON POST body, or null. Handlers may receive creds via body. */
+function jsonBody(e) {
+  if (e && e.postData && e.postData.contents) {
+    try { return JSON.parse(e.postData.contents); } catch (err) { return null; }
+  }
+  return null;
+}
+
+/** Read a param from query params first, then JSON body. */
+function paramOrBody(params, body, key) {
+  if (params && params[key] !== undefined && params[key] !== '') return params[key];
+  return body && body[key] !== undefined ? body[key] : '';
+}
+
+/** POST actions reachable without an existing session (login bootstraps one). */
+var SESSIONLESS_POST = { 'login': true, 'logout': true };
+
+/** GET actions that require a TEACHER session once AUTH_ENFORCED is on. */
+var TEACHER_GET_ACTIONS = {
+  'get_students': true, 'get_library': true, 'get_call_requests': true,
+  'get_class_overview': true, 'get_errors': true, 'get_student_report': true
+};
 
 // ══════════════════════════════════════════════════════
 // INPUT VALIDATION
@@ -293,7 +633,7 @@ function notifyTeacherTestSubmitted(studentName) {
     ns.teacherEmail,
     'FluentPath: ' + studentName + ' submitted placement test',
     '<p><strong>' + studentName + '</strong> has submitted their placement test and is awaiting grading.</p>' +
-    '<p><a href="https://sgalindo88.github.io/fluentpath/teacher.html">Open Dashboard</a></p>'
+    '<p><a href="' + teacherBaseUrl() + '/teacher.html">Open Dashboard</a></p>'
   );
 }
 
@@ -305,7 +645,7 @@ function notifyTeacherLessonSubmitted(studentName, dayNumber) {
     ns.teacherEmail,
     'FluentPath: ' + studentName + ' completed Day ' + dayNumber,
     '<p><strong>' + studentName + '</strong> has completed Day ' + dayNumber + ' and is ready for grading.</p>' +
-    '<p><a href="https://sgalindo88.github.io/fluentpath/teacher.html">Open Dashboard</a></p>'
+    '<p><a href="' + teacherBaseUrl() + '/teacher.html">Open Dashboard</a></p>'
   );
 }
 
@@ -327,7 +667,7 @@ function notifyTeacherCallRequest(studentName, page, dayNumber) {
       '<li>Page: ' + pageLabel + '</li>' +
       '<li>Requested at: ' + ts + '</li>' +
     '</ul>' +
-    '<p><a href="https://sgalindo88.github.io/fluentpath/src/examiner-panel.html?student=' +
+    '<p><a href="' + teacherBaseUrl() + '/src/examiner-panel.html?student=' +
       encodeURIComponent(studentName) + '">Open ' + studentName + '\'s dashboard</a></p>'
   );
 }
@@ -341,7 +681,7 @@ function notifyStudentTestGraded(studentName, cefrLevel) {
     'FluentPath: Your placement test has been graded',
     '<p>Your teacher has reviewed your placement test.</p>' +
     '<p>Your level: <strong>' + (cefrLevel || 'TBD') + '</strong></p>' +
-    '<p><a href="https://sgalindo88.github.io/fluentpath/">View your progress</a></p>'
+    '<p><a href="' + studentBaseUrl() + '/">View your progress</a></p>'
   );
 }
 
@@ -538,7 +878,10 @@ var HEADERS = {
     'difficulty_json',
     'teacher_email', 'student_email',
     'notify_on_test', 'notify_on_submission', 'notify_on_call_request',
-    'course_id'
+    'course_id',
+    // Course gating (Phase 2). ensureSheetHeaders appends these to existing
+    // sheets non-destructively, so current students survive the migration.
+    'paid', 'access_granted', 'stripe_customer_id', 'paid_at'
   ],
   'Lesson Marks': [
     'graded_at', 'teacher_name', 'student_name',
@@ -564,6 +907,17 @@ var HEADERS = {
   'Video Call Requests': [
     'id', 'student_name', 'requested_at', 'page', 'day_number',
     'call_link', 'link_sent_at', 'status'
+  ],
+  // Auth: one row per login identity. email is the login lookup; student_name
+  // stays the internal data key everywhere else. role ∈ student|teacher.
+  'Accounts': [
+    'email', 'student_name', 'role', 'pw_salt', 'pw_hash',
+    'created_at', 'created_by', 'active'
+  ],
+  // Auth: server-issued session tokens (read-through cached as session_<token>).
+  'Sessions': [
+    'token', 'email', 'role', 'student_name',
+    'issued_at', 'expires_at', 'revoked'
   ]
 };
 
@@ -580,7 +934,7 @@ var GET_HANDLERS = {
   get_all_submissions:   function(p) { return handleGetAllSubmissions(p.student); },
   get_students:          function(_) { return handleGetStudents(); },
   get_attendance:        function(p) { return handleGetAttendance(p.student); },
-  generate_lesson:       function(p) { return handleGenerateLesson(p.level, parseInt(p.day, 10), p.topic, String(p.spanish || '').toLowerCase() === 'true', p.student); },
+  generate_lesson:       function(p, session) { enforceCourseAccess(session, p.student); return handleGenerateLesson(p.level, parseInt(p.day, 10), p.topic, String(p.spanish || '').toLowerCase() === 'true', p.student); },
   get_library:           function(_) { return handleGetLibrary(); },
   get_library_entry:     function(p) { return handleGetLibraryEntry(p.id); },
   get_audio:             function(p) { return handleGetAudio(p.id); },
@@ -603,10 +957,27 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  // ── Session: derive identity server-side ──
+  // A student session may only read its own data; a teacher session may target
+  // any ?student=. While AUTH_ENFORCED is off, a missing session is tolerated
+  // (legacy behavior) and the requested student is honored unchanged.
+  var session = (action === 'health') ? null : resolveSession(e.parameter);
+  if (action !== 'health') {
+    if (authEnforced()) {
+      if (!session ||
+          (TEACHER_GET_ACTIONS[action] && session.role !== 'teacher')) {
+        return ContentService
+          .createTextOutput(JSON.stringify({ error: 'Unauthorized' }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    e.parameter.student = resolveEffectiveStudent(session, student);
+  }
+
   var result;
   try {
     var handler = GET_HANDLERS[action];
-    result = handler ? handler(e.parameter) : { error: 'Unknown action: ' + action };
+    result = handler ? handler(e.parameter, session) : { error: 'Unknown action: ' + action };
   } catch (err) {
     logError(action, student, err.message, e.parameter);
     result = { error: err.message };
@@ -624,16 +995,23 @@ function doGet(e) {
 function handleGetProgress(studentName, courseId) {
   if (!studentName) return { found: false };
 
-  // Determine active course_id from Settings if not explicitly provided
+  // Fetch Settings once: used for the active course_id and the unlock flag.
+  var settingsRow = findLastByStudent('Settings', HEADERS['Settings'], studentName);
   if (!courseId) {
-    var settingsRow = findLastByStudent('Settings', HEADERS['Settings'], studentName);
     courseId = (settingsRow && settingsRow['course_id']) ? String(settingsRow['course_id']).trim() : '1';
   }
   courseId = String(courseId).trim() || '1';
 
+  // course_unlocked is computed fresh on every call (not read from the cached
+  // blob) so a just-granted or just-paid student isn't gated by the 5-min cache.
+  var courseUnlocked = isCourseUnlocked(settingsRow);
+
   var cacheKey = 'progress_' + String(studentName).toLowerCase().trim() + '_c' + courseId;
   var cached = cacheGet(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    cached.course_unlocked = courseUnlocked;
+    return cached;
+  }
 
   var result = {
     found: false,
@@ -705,6 +1083,7 @@ function handleGetProgress(studentName, courseId) {
   lessons.sort(function(a, b) { return parseInt(a.day || 0) - parseInt(b.day || 0); });
   result.lessons = lessons;
   result.lessons_completed = lessons.length;
+  result.course_unlocked = courseUnlocked;
   if (lessons.length > 0) {
     result.last_lesson_date = lessons[lessons.length - 1].date;
   }
@@ -2031,6 +2410,106 @@ function handleSaveAudio(body) {
  *  - undefined/void    → send { result: 'success' }
  */
 var POST_HANDLERS = {
+  // ── Auth: login / logout / create_account ──
+  // login needs only the app token (no session yet). Generic failure message;
+  // per-email rate limited since this endpoint is internet-reachable.
+  login: function(params, e) {
+    var body = jsonBody(e);
+    var email = String(paramOrBody(params, body, 'email')).trim().toLowerCase();
+    var password = String(paramOrBody(params, body, 'password'));
+    if (!email || !password) return { _json: { ok: false, error: 'Invalid email or password' } };
+    if (loginRateLimited(email)) return { _json: { ok: false, error: 'Too many attempts. Please try again later.' } };
+    var account = findAccountByEmail(email);
+    var ok = account && truthy(account.active) &&
+             verifyPassword(password, account.pw_salt, account.pw_hash);
+    if (!ok) return { _json: { ok: false, error: 'Invalid email or password' } };
+    var session = createSession(account);
+    return { _json: {
+      ok: true,
+      session: session.token,
+      role: session.role,
+      student_name: session.student_name,
+      expires_at: session.expires_at
+    } };
+  },
+
+  logout: function(params, e) {
+    var body = jsonBody(e);
+    revokeSession(String(paramOrBody(params, body, 'session')).trim());
+    return { _json: { ok: true } };
+  },
+
+  // Student-only: open a Stripe Checkout Session and return its hosted URL for
+  // the frontend to redirect to. Identity comes from the session (never the
+  // request body), so a student can only ever pay for their own account.
+  create_checkout: function(params, e, session) {
+    if (!session || session.role !== 'student') throw new Error('Login required');
+    var props = PropertiesService.getScriptProperties();
+    var secret = props.getProperty('STRIPE_SECRET');
+    var priceId = props.getProperty('STRIPE_PRICE_ID');
+    if (!secret || !priceId) throw new Error('Payments are not configured');
+
+    var base = studentBaseUrl();
+    // Object payload → UrlFetchApp sends application/x-www-form-urlencoded and
+    // URL-encodes every key/value (handles names/emails with spaces or accents).
+    var payload = {
+      'mode': 'payment',
+      'line_items[0][price]': priceId,
+      'line_items[0][quantity]': '1',
+      'client_reference_id': session.student_name,
+      'customer_email': session.email,
+      'success_url': base + '/?paid=1',
+      'cancel_url': base + '/?paid=0'
+    };
+    var resp = UrlFetchApp.fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + secret },
+      payload: payload,
+      muteHttpExceptions: true
+    });
+    var body = JSON.parse(resp.getContentText());
+    if (resp.getResponseCode() >= 400) {
+      throw new Error('Stripe error: ' + ((body && body.error && body.error.message) || 'request failed'));
+    }
+    return { _json: { url: body.url } };
+  },
+
+  // Teacher-only (gated via TEACHER_ACTIONS). Creates an invite-only account
+  // keyed by the student's existing student_name so their data associates
+  // immediately, and ensures a Settings row exists for downstream upserts.
+  create_account: function(params, e) {
+    var body = jsonBody(e);
+    var email = String(paramOrBody(params, body, 'email')).trim().toLowerCase();
+    var studentName = String(paramOrBody(params, body, 'student_name')).trim();
+    var password = String(paramOrBody(params, body, 'password'));
+    var role = String(paramOrBody(params, body, 'role') || 'student').trim().toLowerCase();
+    if (!email || !studentName || !password) {
+      throw new Error('email, student_name and password are required');
+    }
+    if (role !== 'student' && role !== 'teacher') throw new Error('Invalid role: ' + role);
+    if (findAccountByEmail(email)) throw new Error('An account with that email already exists');
+
+    var actor = resolveSession(params);
+    var salt = Utilities.getUuid();
+    var headers = HEADERS['Accounts'];
+    var account = {
+      email: email, student_name: studentName, role: role,
+      pw_salt: salt, pw_hash: hashPassword(password, salt),
+      created_at: new Date().toISOString(),
+      created_by: (actor && actor.email) || '',
+      active: 'true'
+    };
+    getOrCreateSheet('Accounts', headers).appendRow(headers.map(function(h) { return account[h]; }));
+
+    if (role === 'student' && !findLastByStudent('Settings', HEADERS['Settings'], studentName)) {
+      upsertByStudent('Settings', HEADERS['Settings'], studentName, {
+        student_name: studentName, student_email: email,
+        course_id: '1', updated_at: new Date().toLocaleString()
+      });
+    }
+    return { _json: { ok: true, email: email, student_name: studentName, role: role } };
+  },
+
   save_audio: function(params, e) {
     var audioBody;
     if (e.postData && e.postData.contents) {
@@ -2054,10 +2533,11 @@ var POST_HANDLERS = {
     return { _json: { summary: aiGenerate(prompt) } };
   },
 
-  save_progress: function(params) {
+  save_progress: function(params, e, session) {
     var name = requireParam(params, 'student_name');
     var day = requireParam(params, 'day_number');
     var level = requireParam(params, 'level');
+    enforceCourseAccess(session, name); // gated course path — locked students rejected
     safeAppendRow('Course Progress', HEADERS['Course Progress'], params);
     cacheInvalidateStudent(name);
     notifyTeacherLessonSubmitted(name, day);
@@ -2174,6 +2654,14 @@ var POST_HANDLERS = {
 
 function doPost(e) {
   var params = e.parameter;
+
+  // ── Stripe webhook ──
+  // Reached via ?stripe=1. Handled before any token check (Stripe can't send
+  // our app token); unlock is gated by the server-to-Stripe re-fetch inside.
+  if (String(params['stripe'] || '') === '1') {
+    return handleStripeWebhook(e);
+  }
+
   var action = (params['action'] || '').trim();
   var sheetName = (params['sheet_name'] || '').trim();
 
@@ -2198,6 +2686,23 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  // ── Session: enforce + derive identity ──
+  // Once AUTH_ENFORCED is on, every student write needs a valid session
+  // (login/logout bootstrap one and are exempt; teacher actions already
+  // verified above). A student session is then forced onto student_name/
+  // candidate_name so a student can never write as someone else.
+  var session = resolveSession(params);
+  var isTeacherAction = TEACHER_ACTIONS[action] || isExaminerPost(params);
+  if (authEnforced() && !isTeacherAction && !SESSIONLESS_POST[action] && !session) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ error: 'Unauthorized' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  if (session && session.role === 'student') {
+    if (params['student_name'] !== undefined) params['student_name'] = session.student_name;
+    if (params['candidate_name'] !== undefined) params['candidate_name'] = session.student_name;
+  }
+
   // ── Resolve handler ──
   var handler = POST_HANDLERS[action];
   if (!handler && sheetName === 'Examiner Results') handler = POST_HANDLERS._examiner_results;
@@ -2210,7 +2715,7 @@ function doPost(e) {
   }
 
   try {
-    var result = handler(params, e);
+    var result = handler(params, e, session);
     var body = (result && result._json) ? result._json : { result: 'success' };
     return ContentService
       .createTextOutput(JSON.stringify(body))

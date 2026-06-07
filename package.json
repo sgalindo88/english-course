@@ -10,6 +10,8 @@
     "format:check": "prettier --check src/scripts/ src/styles/ *.html",
     "test": "vitest run",
     "test:watch": "vitest",
+    "sync": "node scripts/sync-shared.mjs",
+    "sync:check": "node scripts/sync-shared.mjs --check",
     "dev": "npx serve .",
     "clasp:push": "clasp push",
     "clasp:deploy": "clasp push && clasp deploy -d \"$(git log -1 --format=%s)\"",

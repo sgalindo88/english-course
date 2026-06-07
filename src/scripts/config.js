@@ -8,10 +8,22 @@
 var FP = window.FP || {};
 
 // ── Environment ─────────────────────────────────────────────
-// 'production' on GitHub Pages, 'development' everywhere else.
+// 'production' on the live hosts, 'development' everywhere else.
 // In development mode a visual DEV banner is shown.
-FP.ENV = (typeof location !== 'undefined' && location.hostname === 'sgalindo88.github.io')
-  ? 'production' : 'development';
+FP.ENV = (function () {
+  if (typeof location === 'undefined') return 'development';
+  var prodHosts = ['sgalindo88.github.io', 'fluentpath.ca', 'www.fluentpath.ca', 'teacher.fluentpath.ca'];
+  return prodHosts.indexOf(location.hostname) >= 0 ? 'production' : 'development';
+})();
+
+// ── Site role / cross-site URLs ─────────────────────────────
+// The student app and the teacher dashboard live on separate origins
+// (fluentpath.ca vs teacher.fluentpath.ca). A page is the teacher site when
+// its hostname starts with "teacher."; this also lets each side link to the
+// other and lets the teacher login gate enforce role === 'teacher'.
+FP.IS_TEACHER_SITE = (typeof location !== 'undefined') && location.hostname.indexOf('teacher.') === 0;
+FP.STUDENT_URL = 'https://fluentpath.ca';
+FP.TEACHER_URL = 'https://teacher.fluentpath.ca';
 
 // ── Endpoints ────────────────────────────────────────────────
 // Production webhook — always set here as the default.
@@ -20,11 +32,13 @@ FP.ENV = (typeof location !== 'undefined' && location.hostname === 'sgalindo88.g
 FP.WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbwsicAxs8wunL5Eg_G0wXYbE1JuN-aqWdP5Fv6Bry4jfWyWm58PfhYcH3Pat-g4P9fX/exec';
 FP.FORMSPREE_ENDPOINT = 'https://formspree.io/f/mpqoorna';
 
-// ── Auth Tokens ─────────────────────────────────────────────
-// Production tokens (match APP_SECRET and TEACHER_SECRET in Script Properties).
+// ── Auth Token ──────────────────────────────────────────────
+// Production app token (matches APP_SECRET in Script Properties). This is a
+// speed bump, not the real authorization — that comes from the per-user
+// session issued at login. The old public TEACHER_TOKEN has been removed;
+// teacher access is now proven by a teacher session.
 // For local dev with a different Apps Script deployment, override in config.local.js.
 FP.APP_TOKEN = '04eaecb3a0ccb2dc91c6b0da61a8d875';
-FP.TEACHER_TOKEN = '5fc87759a0b6b02e2f8f69125cafb1a8';
 
 // ── CEFR Levels ──────────────────────────────────────────────
 FP.LEVELS = {
@@ -54,6 +68,40 @@ FP.KEYS = {
   TEACHER_STATE:    'fluentpath_teacher',
   LESSON_MARKS:     'fp_lesson_marks',
   COURSE_ID:        'fp_course_id',
+  // Session (set at login, read by api.js on every webhook call)
+  SESSION:          'fp_session',
+  SESSION_EXP:      'fp_session_exp',
+  ROLE:             'fp_role',
+};
+
+// ── Session helpers ──────────────────────────────────────────
+// The login response (POST ?action=login) returns a session token, role, the
+// server-resolved student_name, and an expiry. We persist the token/role/exp
+// here; api.js injects the token into every webhook call, and pages use
+// getSession() to decide whether to show the app or the login screen.
+FP.getSession = function () {
+  try {
+    var token = localStorage.getItem(FP.KEYS.SESSION);
+    if (!token) return null;
+    var exp = localStorage.getItem(FP.KEYS.SESSION_EXP);
+    if (exp && new Date(exp).getTime() < Date.now()) { FP.clearSession(); return null; }
+    return token;
+  } catch (e) { return null; }
+};
+
+FP.clearSession = function () {
+  try {
+    localStorage.removeItem(FP.KEYS.SESSION);
+    localStorage.removeItem(FP.KEYS.SESSION_EXP);
+    localStorage.removeItem(FP.KEYS.ROLE);
+  } catch (e) { /* ignore */ }
+};
+
+/** Redirect to the appropriate login screen (teacher dashboard vs student app). */
+FP.redirectToLogin = function () {
+  var inSrc = location.pathname.indexOf('/src/') >= 0;
+  var root = inSrc ? '../' : './';
+  location.href = root + (FP.IS_TEACHER_SITE ? 'teacher.html' : 'index.html');
 };
 
 // ── Load config.local.js (optional, gitignored) ─────────
