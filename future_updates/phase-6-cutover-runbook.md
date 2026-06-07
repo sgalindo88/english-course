@@ -220,9 +220,33 @@ enforced, and you can fix forward without locking anyone out.
   property **and** update `FP.APP_TOKEN` in both repos in the same change, then
   redeploy frontends and bump `CACHE_VERSION` again so cached clients pick up
   the new token. *(Optional but recommended; can be deferred to a follow-up.)*
-- [ ] **I3. Switch Stripe to live keys** — replace `STRIPE_SECRET` /
-  `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_ID` with live-mode values and point the
-  live webhook at the same `?stripe=1` URL.
+- [ ] **I3. Switch Stripe from test mode to live** — full procedure below.
+
+---
+
+## I3 — Switching Stripe test → live (when launching paid courses)
+
+The cutover runs Stripe in **test mode** so the paywall can be exercised without real charges. Going live is a **Script-Properties-only** change — **no code edit, no redeploy** (the backend reads `STRIPE_*` at request time). The catch: in Stripe, **test and live are completely separate** — API keys, Prices, and webhook endpoints (and their signing secrets) all exist independently per mode. You must replace **all three** properties with their live-mode counterparts, or you'll get mismatches (e.g. a live key trying to re-fetch a test session → "No such checkout session").
+
+**Pre-req:** the Stripe account must be **activated for live payments** (Dashboard → complete business profile / "Activate payments"). Until then, live keys don't exist.
+
+1. [ ] **Live Price.** Flip the Dashboard to **Live mode** (top-right toggle). Re-create the one-time Price (Products → Add product → one-time) — the test `price_…` does **not** carry over. Copy the new **live** `price_…`.
+2. [ ] **Live webhook endpoint.** Still in Live mode: Developers → Webhooks → Add endpoint → URL = the **same** Apps Script exec URL **with `?stripe=1`**, event = **`checkout.session.completed`**. Copy the endpoint's **live** signing secret (`whsec_…`).
+3. [ ] **Live secret key.** Developers → API keys (Live mode) → reveal the **Secret key** (`sk_live_…`).
+4. [ ] **Update Script Properties** (Apps Script → Project Settings → Script Properties) — replace all three, save:
+   - `STRIPE_SECRET` → `sk_live_…`
+   - `STRIPE_WEBHOOK_SECRET` → the live `whsec_…` (from step 2 — it differs from the test one)
+   - `STRIPE_PRICE_ID` → the live `price_…` (from step 1)
+   *(No deploy needed. `STUDENT_URL`/`TEACHER_URL` and the code are unchanged.)*
+5. [ ] **Verify with a real charge** (Stripe rejects test cards in live mode): from `fluentpath.ca`, log in as a student who is **not** granted/paid → open the course → pay with a **real card** for the smallest amount → confirm the course unlocks (webhook re-fetch flips `paid=true`) → then **refund** that payment in the Dashboard if it was just a test. Watch Developers → Webhooks → your live endpoint → "Recent deliveries" for a `200` on `checkout.session.completed`.
+6. [ ] **Confirm test-mode artifacts are retired** — the test webhook endpoint can be deleted (or left; it just won't fire in live). Don't leave test keys in the properties.
+
+**Rollback:** set the three `STRIPE_*` properties back to their test values (`sk_test_…` / test `whsec_…` / test `price_…`). Instant, no redeploy. Already-unlocked students stay unlocked (`paid`/`access_granted` are sticky).
+
+**Notes**
+- Unlock is gated by the **server-to-Stripe re-fetch** (`fulfillCheckout`), which uses `STRIPE_SECRET`. So the key's mode must match the mode the Checkout Session was created in — which is why all three must move together.
+- The webhook signature check (`verifyStripeSignature`, `STRIPE_WEBHOOK_SECRET`) is defense-in-depth only; the re-fetch is the trust anchor. Still, set the live `whsec_…` so it's consistent.
+- Pricing changes later need **no code change** — just edit/replace the Price in Stripe and update `STRIPE_PRICE_ID`.
 
 ---
 
