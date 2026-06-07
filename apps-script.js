@@ -364,7 +364,7 @@ function cacheKeyForSession(token) { return 'session_' + token; }
 // ── Password reset tokens ─────────────────────────────
 // A reset token is a random UUID emailed to the user; we store only its
 // SHA-256 hash (high-entropy → one fast digest is enough, no iteration).
-var RESET_TTL_MS = 60 * 60 * 1000; // reset link valid 1 hour
+var RESET_TTL_MS = 24 * 60 * 60 * 1000; // reset link valid 24 hours
 
 function hashToken(token) {
   var digest = Utilities.computeDigest(
@@ -604,7 +604,7 @@ function sendPasswordResetEmail(email, role, token) {
     email,
     'FluentPath: Reset your password',
     '<p>We received a request to reset your FluentPath password.</p>' +
-    '<p><a href="' + link + '">Click here to set a new password</a> — this link expires in 1 hour.</p>' +
+    '<p><a href="' + link + '">Click here to set a new password</a> — this link expires in 24 hours.</p>' +
     '<p>If you did not request this, you can ignore this email; your password is unchanged.</p>'
   );
 }
