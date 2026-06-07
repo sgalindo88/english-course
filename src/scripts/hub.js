@@ -42,19 +42,27 @@ function storeSession(res) {
 }
 
 async function enterHub() {
+  var btn = document.getElementById('btnEnter');
+  if (btn && btn.disabled) return; // guard against double-submit (Enter + click)
   var email = (document.getElementById('loginEmail').value || '').trim();
   var password = document.getElementById('loginPassword').value || '';
   loginError('');
   if (!email || !password) { loginError('Please enter your email and password.'); return; }
 
+  // Hashing takes a few seconds server-side — disable the button + show progress
+  // so it's clear something is happening and the form can't be submitted twice.
+  if (btn) { btn.disabled = true; btn.textContent = 'Logging in…'; }
   showScreen('screen-loading');
+
+  function failBack(msg) {
+    showScreen('screen-welcome');
+    loginError(msg);
+    if (btn) { btn.disabled = false; btn.textContent = 'Log In'; }
+  }
+
   try {
     var res = await FP.api.postRead(WEBHOOK_URL + '?action=login', { email: email, password: password });
-    if (!res || !res.ok) {
-      showScreen('screen-welcome');
-      loginError((res && res.error) || 'Login failed. Please try again.');
-      return;
-    }
+    if (!res || !res.ok) { failBack((res && res.error) || 'Login failed. Please try again.'); return; }
     if (res.role && res.role !== 'student') {
       // A teacher account belongs on the teacher site — send them there.
       location.href = FP.TEACHER_URL;
@@ -63,10 +71,9 @@ async function enterHub() {
     storeSession(res);
     studentName = res.student_name;
     localStorage.setItem('fp_student_name', studentName); // other pages still read this key
-    fetchProgress(studentName); // uses the SERVER-returned name, never the typed one
+    fetchProgress(studentName); // uses the SERVER-returned name, never the typed one (button stays disabled — we navigate to the dashboard)
   } catch (e) {
-    showScreen('screen-welcome');
-    loginError('Could not reach the server. Please try again.');
+    failBack('Could not reach the server. Please try again.');
   }
 }
 
