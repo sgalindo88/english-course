@@ -243,10 +243,14 @@ function bytesToHex(bytes) {
 
 // Iterated SHA-256 password hashing. No bcrypt on Apps Script, so we lean on
 // (a) a server-only pepper (PW_PEPPER Script Property) — a leaked sheet alone
-// can't be brute-forced offline — and (b) many rounds. Tuned to stay well
-// under the 6-minute execution limit for ~10 invite-only users. NOT suitable
-// for public signup; see the README security caveats.
-var PW_ROUNDS = 100000;
+// can't be brute-forced offline — and (b) iteration. Apps Script's
+// Utilities.computeDigest has heavy per-call overhead: benchmarked on the live
+// runtime, 100k rounds = ~64s (blows the 30s request timeout), 10k = ~7s,
+// 2k = ~2.7s, 1k = ~1.9s (a ~1.5s fixed floor). 2000 keeps login to ~3-4s
+// while staying well under the 6-min limit. Iteration is the secondary defense
+// here (the pepper is primary); proportionate for ~10 invite-only users, NOT
+// for public signup. See the README security caveats.
+var PW_ROUNDS = 2000;
 
 function pwPepper() {
   return PropertiesService.getScriptProperties().getProperty('PW_PEPPER') || '';

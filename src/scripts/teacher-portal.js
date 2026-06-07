@@ -22,8 +22,14 @@
     var email = (document.getElementById('tEmail').value || '').trim();
     var pw = document.getElementById('tPassword').value || '';
     var err = document.getElementById('tLoginError');
+    var btn = document.getElementById('tLoginBtn');
     setMsg(err, '');
     if (!email || !pw) { setMsg(err, 'Enter your email and password.'); return; }
+    // Hashing takes a few seconds server-side — show progress so the button
+    // doesn't look dead, and block double-submits (which trip the rate limit).
+    var btnLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
     try {
       var res = await FP.api.postRead(WEBHOOK_URL + '?action=login', { email: email, password: pw });
       if (!res || !res.ok) { setMsg(err, (res && res.error) || 'Login failed.'); return; }
@@ -35,6 +41,9 @@
       loadStudents();
     } catch (e) {
       setMsg(err, 'Could not reach the server. Please try again.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = btnLabel;
     }
   };
 
