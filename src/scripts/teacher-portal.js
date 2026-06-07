@@ -61,8 +61,13 @@
     var email = (document.getElementById('caEmail').value || '').trim();
     var pw = document.getElementById('caPassword').value || '';
     var st = document.getElementById('caStatus');
+    var btn = document.getElementById('caBtn');
     setMsg(st, '');
     if (!name || !email || !pw) { setMsg(st, 'All fields are required.'); return; }
+    if (btn.disabled) return; // guard against double-submit
+    var btnLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
     try {
       var res = await FP.api.postRead(WEBHOOK_URL + '?action=create_account',
         { student_name: name, email: email, password: pw, role: 'student' });
@@ -77,6 +82,9 @@
       }
     } catch (e) {
       setMsg(st, e.message || 'Could not create account.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = btnLabel;
     }
   };
 
