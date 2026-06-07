@@ -271,21 +271,23 @@ function verifyPassword(plain, salt, expectedHash) {
 }
 
 // ── Account lookup ────────────────────────────────────
-/** Find the most recent account row for an email (case-insensitive), or null. */
+/** Find the most recent account row for an email (case-insensitive), or null.
+ *  Scans values directly (NOT createTextFinder) — TextFinder's search index
+ *  lags writes, so a just-created account isn't findable for a minute or two. */
 function findAccountByEmail(email) {
   var headers = HEADERS['Accounts'];
   var sheet = getOrCreateSheet('Accounts', headers);
   if (sheet.getLastRow() < 2) return null;
-  var emailCol = headers.indexOf('email') + 1;
-  var range = sheet.getRange(2, emailCol, sheet.getLastRow() - 1, 1);
-  var matches = range.createTextFinder(String(email).trim())
-    .matchCase(false).matchEntireCell(true).findAll();
-  if (!matches.length) return null;
-  var rowNum = matches[matches.length - 1].getRow();
-  var rowData = sheet.getRange(rowNum, 1, 1, headers.length).getValues()[0];
-  var obj = { _row: rowNum };
-  for (var j = 0; j < headers.length; j++) obj[headers[j]] = rowData[j];
-  return obj;
+  var target = String(email).toLowerCase().trim();
+  var emailCol = headers.indexOf('email');
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  for (var i = data.length - 1; i >= 0; i--) { // last match wins (most recent)
+    if (String(data[i][emailCol]).toLowerCase().trim() !== target) continue;
+    var obj = { _row: i + 2 };
+    for (var j = 0; j < headers.length; j++) obj[headers[j]] = data[i][j];
+    return obj;
+  }
+  return null;
 }
 
 // ── Session lifecycle ─────────────────────────────────
@@ -384,24 +386,29 @@ function createResetToken(email) {
   return token;
 }
 
-/** Validate a raw reset token → { email, _row } if valid (unused/unexpired), else null. */
+/** Validate a raw reset token → { email, _row } if valid (unused/unexpired), else null.
+ *  Scans values directly (NOT createTextFinder): the token row is searched
+ *  seconds-to-minutes after it's written, which is exactly when TextFinder's
+ *  index hasn't caught up yet — the cause of spurious "invalid/expired" errors. */
 function consumeResetToken(token) {
   token = String(token || '').trim();
   if (!token) return null;
   var headers = HEADERS['PasswordResets'];
   var sheet = getOrCreateSheet('PasswordResets', headers);
   if (sheet.getLastRow() < 2) return null;
-  var matches = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1)
-    .createTextFinder(hashToken(token)).matchEntireCell(true).findAll();
-  if (!matches.length) return null;
-  var rowNum = matches[matches.length - 1].getRow();
-  var rowData = sheet.getRange(rowNum, 1, 1, headers.length).getValues()[0];
-  var row = {};
-  for (var j = 0; j < headers.length; j++) row[headers[j]] = rowData[j];
-  if (truthy(row.used)) return null;
-  var exp = new Date(row.expires_at).getTime();
-  if (!exp || exp < new Date().getTime()) return null;
-  return { email: String(row.email).toLowerCase().trim(), _row: rowNum };
+  var th = hashToken(token);
+  var hashCol = headers.indexOf('token_hash');
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  for (var i = data.length - 1; i >= 0; i--) { // most recent match first
+    if (String(data[i][hashCol]) !== th) continue;
+    var row = {};
+    for (var j = 0; j < headers.length; j++) row[headers[j]] = data[i][j];
+    if (truthy(row.used)) return null;
+    var exp = new Date(row.expires_at).getTime();
+    if (!exp || exp < new Date().getTime()) return null;
+    return { email: String(row.email).toLowerCase().trim(), _row: i + 2 };
+  }
+  return null;
 }
 
 /** Mark a reset-token row used (single-use). */
