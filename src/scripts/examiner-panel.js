@@ -16,6 +16,7 @@ let ex = {
   allowSpanish: false,
   allowSkipTest: false,
   allowRetakeTest: false,
+  grantAccess: false,   // comp the paid course (Settings.access_granted)
   webhook: '',
   attendance: {},       // { 'day-1': 'present'|'absent', ... }
   markingData: null,    // loaded submission
@@ -65,6 +66,7 @@ function resetStudentState(newStudentName) {
   ex.allowSpanish = false;
   ex.allowSkipTest = false;
   ex.allowRetakeTest = false;
+  ex.grantAccess = false;
   ex.attendance = {};
   ex.markingData = null;
   ex.writingScores = {};
@@ -472,6 +474,8 @@ function initApp() {
   document.getElementById('prof-allow-spanish').checked      = !!ex.allowSpanish;
   document.getElementById('prof-allow-skip-test').checked    = !!ex.allowSkipTest;
   document.getElementById('prof-allow-retake-test').checked  = !!ex.allowRetakeTest;
+  var grantEl = document.getElementById('prof-grant-access');
+  if (grantEl) grantEl.checked = !!ex.grantAccess;
   document.getElementById('prof-teacher-email').value        = ex.teacherEmail || '';
   document.getElementById('prof-notify-test').checked        = !!ex.notifyOnTest;
   document.getElementById('prof-notify-submission').checked  = !!ex.notifyOnSubmission;
@@ -1971,6 +1975,8 @@ function saveProfile() {
   ex.allowSpanish        = document.getElementById('prof-allow-spanish').checked;
   ex.allowSkipTest       = document.getElementById('prof-allow-skip-test').checked;
   ex.allowRetakeTest     = document.getElementById('prof-allow-retake-test').checked;
+  var grantAccessEl      = document.getElementById('prof-grant-access');
+  ex.grantAccess         = grantAccessEl ? grantAccessEl.checked : ex.grantAccess;
   ex.teacherEmail        = document.getElementById('prof-teacher-email').value;
   ex.notifyOnTest        = document.getElementById('prof-notify-test').checked;
   ex.notifyOnSubmission  = document.getElementById('prof-notify-submission').checked;
@@ -1991,6 +1997,7 @@ function saveProfile() {
       allow_spanish: ex.allowSpanish,
       allow_skip_test: ex.allowSkipTest,
       allow_retake_test: ex.allowRetakeTest,
+      access_granted: ex.grantAccess,
       course_month: ex.studentMonth,
       notes: ex.studentNotes,
       difficulty_json: buildDifficultyJson(),
@@ -2245,6 +2252,13 @@ function showStatus(id, msg, isError) {
 // INIT
 // ══════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
+  // Teacher session guard — the dashboard was previously protected only by
+  // being unlinked. Require a teacher session or bounce to the login portal.
+  if (!(FP.getSession && FP.getSession()) || localStorage.getItem(FP.KEYS.ROLE) !== 'teacher') {
+    location.href = '../teacher.html';
+    return;
+  }
+
   const hasSaved = loadFromLocalStorage();
 
   // Always use hardcoded teacher name

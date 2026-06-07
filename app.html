@@ -22,15 +22,44 @@
     </div>
 
     <div class="login-card">
-      <label for="studentName">Your Name</label>
-      <input type="text" id="studentName" placeholder="Enter your full name" autocomplete="name" maxlength="100" aria-label="Your full name">
-      <p class="login-hint">Use the same name your teacher has on file.</p>
+      <label for="loginEmail">Email</label>
+      <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="username" aria-label="Email">
+      <label for="loginPassword" style="display:block;margin-top:14px;">Password</label>
+      <input type="password" id="loginPassword" placeholder="Your password" autocomplete="current-password" aria-label="Password">
+      <p class="login-hint" id="loginError" style="display:none;color:var(--rust);"></p>
+      <p class="login-hint">Use the email and password your teacher gave you.</p>
     </div>
 
-    <button class="btn-enter" id="btnEnter" onclick="enterHub()">Continue</button>
+    <button class="btn-enter" id="btnEnter" onclick="enterHub()">Log In</button>
 
     <div class="welcome-footer">
+      <p><a href="#" id="teacherLink">For teachers &rarr;</a></p>
       <p>A <a href="#">Fluentora</a> programme</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCREEN — Paywall (gated daily course; placement test is free)
+     ═══════════════════════════════════════════════════════════ -->
+<div id="screen-paywall" class="screen">
+  <div class="container">
+    <div class="welcome-header">
+      <h1>Unlock Your Course</h1>
+      <p>Full access to your personalised daily lessons.</p>
+      <div class="welcome-divider"></div>
+    </div>
+
+    <div class="login-card">
+      <p>Your placement test is free. To begin your daily lessons, a one-time
+         payment unlocks the full course — permanently.</p>
+      <p class="login-hint" id="paywallError" style="display:none;color:var(--rust);"></p>
+    </div>
+
+    <button class="btn-enter" id="btnPay" onclick="startCheckout()">Continue to Payment</button>
+
+    <div class="welcome-footer">
+      <p><a href="#" onclick="showScreen('screen-dashboard');return false;">&larr; Back to my journey</a></p>
     </div>
   </div>
 </div>

@@ -8,34 +8,31 @@
      - Google Fonts: cache-first (long-lived)
    ═══════════════════════════════════════════════════════════════ */
 
-var CACHE_VERSION = 'fp-v8';
+var CACHE_VERSION = 'fp-v8'; // bump at cutover (Phase 6) to evict old caches
 // App shell paths are relative to the service worker's location (project root).
 // This works on both GitHub Pages (/fluentpath/sw.js) and localhost (/sw.js).
+// STUDENT-scoped: only the student site's files. The teacher dashboard lives in
+// a separate repo (teacher.fluentpath.ca); its service worker is generated from
+// this file by scripts/sync-shared.mjs. (Effective on next CACHE_VERSION bump.)
 var APP_SHELL = [
   './',
   './index.html',
-  './teacher.html',
   './src/student-initial-test.html',
   './src/student-course.html',
-  './src/examiner-panel.html',
   './src/scripts/config.js',
   './src/scripts/api.js',
   './src/scripts/utils.js',
   './src/scripts/checkpoint.js',
   './src/scripts/hub.js',
-  './src/scripts/teacher-portal.js',
   './src/scripts/student-test.js',
   './src/scripts/student-lesson.js',
-  './src/scripts/examiner-panel.js',
   './src/scripts/call-request.js',
   './src/scripts/i18n.js',
   './src/styles/theme.css',
   './src/styles/mobile.css',
   './src/styles/hub.css',
-  './src/styles/teacher-portal.css',
   './src/styles/student-test.css',
   './src/styles/student-lesson.css',
-  './src/styles/examiner-panel.css',
 ];
 
 var API_CACHE = 'fp-api-v5';

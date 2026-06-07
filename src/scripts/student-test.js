@@ -725,6 +725,9 @@ function restartTest() {
 
 // Set today's date on load
 window.addEventListener('DOMContentLoaded', () => {
+  // Session guard — the placement test requires a logged-in student (free, not public).
+  if (FP.getSession && !FP.getSession()) { FP.redirectToLogin(); return; }
+
   document.getElementById('candidateDate').value = new Date().toISOString().split('T')[0];
 
   // Auto-fill name from hub (localStorage)

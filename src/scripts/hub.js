@@ -24,29 +24,96 @@ function showScreen(id) {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Enter Hub
+   Login — email + password → server-issued session
    ───────────────────────────────────────────────────────────── */
-function enterHub() {
-  const input = document.getElementById('studentName');
-  const name = input.value.trim().substring(0, 100);
-  if (!name) { input.focus(); return; }
-  if (!/^[a-zA-ZÀ-ÿ\s'-]+$/.test(name)) {
-    input.setCustomValidity('Please use only letters, spaces, hyphens, and apostrophes.');
-    input.reportValidity();
-    return;
-  }
-  input.setCustomValidity('');
-
-  studentName = name;
-  localStorage.setItem('fp_student_name', name);
-  showScreen('screen-loading');
-  fetchProgress(name);
+function loginError(msg) {
+  var el = document.getElementById('loginError');
+  if (!el) return;
+  if (msg) { el.textContent = msg; el.style.display = 'block'; }
+  else { el.textContent = ''; el.style.display = 'none'; }
 }
 
-/* Allow pressing Enter on the name field */
-document.getElementById('studentName').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') enterHub();
-});
+function storeSession(res) {
+  try {
+    localStorage.setItem(FP.KEYS.SESSION, res.session);
+    if (res.expires_at) localStorage.setItem(FP.KEYS.SESSION_EXP, res.expires_at);
+    if (res.role) localStorage.setItem(FP.KEYS.ROLE, res.role);
+  } catch (e) { /* storage unavailable */ }
+}
+
+async function enterHub() {
+  var email = (document.getElementById('loginEmail').value || '').trim();
+  var password = document.getElementById('loginPassword').value || '';
+  loginError('');
+  if (!email || !password) { loginError('Please enter your email and password.'); return; }
+
+  showScreen('screen-loading');
+  try {
+    var res = await FP.api.postJson(WEBHOOK_URL + '?action=login', { email: email, password: password });
+    if (!res || !res.ok) {
+      showScreen('screen-welcome');
+      loginError((res && res.error) || 'Login failed. Please try again.');
+      return;
+    }
+    if (res.role && res.role !== 'student') {
+      // A teacher account belongs on the teacher site — send them there.
+      location.href = FP.TEACHER_URL;
+      return;
+    }
+    storeSession(res);
+    studentName = res.student_name;
+    localStorage.setItem('fp_student_name', studentName); // other pages still read this key
+    fetchProgress(studentName); // uses the SERVER-returned name, never the typed one
+  } catch (e) {
+    showScreen('screen-welcome');
+    loginError('Could not reach the server. Please try again.');
+  }
+}
+
+/* Allow pressing Enter on the password field */
+(function () {
+  var pw = document.getElementById('loginPassword');
+  if (pw) pw.addEventListener('keydown', function (e) { if (e.key === 'Enter') enterHub(); });
+})();
+
+/* ─────────────────────────────────────────────────────────────
+   Paywall — gated daily course (placement test stays free)
+   ───────────────────────────────────────────────────────────── */
+function goToCourse() {
+  // Only block when the server has explicitly said locked; if course_unlocked
+  // is missing (offline/old cache) fail open — the server still enforces it.
+  if (progress && progress.course_unlocked === false) { openPaywall(); return; }
+  location.href = 'src/student-course.html';
+}
+
+function openPaywall() {
+  var err = document.getElementById('paywallError');
+  if (err) err.style.display = 'none';
+  showScreen('screen-paywall');
+}
+
+async function startCheckout() {
+  var err = document.getElementById('paywallError');
+  if (err) err.style.display = 'none';
+  try {
+    var res = await FP.api.postJson(WEBHOOK_URL + '?action=create_checkout', {});
+    if (res && res.url) { location.href = res.url; return; }
+    throw new Error((res && res.error) || 'Could not start checkout.');
+  } catch (e) {
+    if (err) { err.textContent = e.message || 'Payment could not be started.'; err.style.display = 'block'; }
+  }
+}
+
+/* Returning from Stripe (?paid=1): the webhook may lag, so poll progress a few
+   times until the course shows unlocked, then clean the URL. */
+async function handlePaidReturn() {
+  for (var i = 0; i < 5; i++) {
+    await fetchProgress(studentName);
+    if (progress && progress.course_unlocked) break;
+    await new Promise(function (r) { setTimeout(r, 2000); });
+  }
+  try { window.history.replaceState({}, '', location.pathname); } catch (e) { /* ignore */ }
+}
 
 /* ─────────────────────────────────────────────────────────────
    Fetch Progress from Google Sheet (with localStorage fallback)
@@ -288,7 +355,7 @@ function renderDashboard() {
       skipHtml =
         '<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--rule);">' +
         '<p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Your teacher has allowed you to start the course without the placement test.</p>' +
-        '<a class="btn-cta secondary" href="src/student-course.html">Skip to Course</a>' +
+        '<button class="btn-cta secondary" onclick="goToCourse()">Skip to Course</button>' +
         '</div>';
     }
     cta.innerHTML =
@@ -306,7 +373,7 @@ function renderDashboard() {
     const nextDay = courseDays + 1;
     cta.innerHTML =
       '<p>Ready for Day ' + nextDay + '? Your teacher will be with you on the video call.</p>' +
-      '<a class="btn-cta" href="src/student-course.html">Start Day ' + nextDay + ' Lesson</a>';
+      '<button class="btn-cta" onclick="goToCourse()">Start Day ' + nextDay + ' Lesson</button>';
   }
 
   renderAchievements(d);
@@ -325,9 +392,18 @@ function refreshProgress() {
    Logout — switch student
    ───────────────────────────────────────────────────────────── */
 function logout() {
+  var session = FP.getSession && FP.getSession();
+  if (session) {
+    // Fire-and-forget server-side revoke; don't block the UI on it.
+    try { FP.api.postJson(WEBHOOK_URL + '?action=logout', { session: session }); } catch (e) { /* ignore */ }
+  }
+  if (FP.clearSession) FP.clearSession();
+  try { localStorage.removeItem('fp_student_name'); } catch (e) { /* ignore */ }
   studentName = '';
   progress = null;
-  document.getElementById('studentName').value = '';
+  var emailEl = document.getElementById('loginEmail'); if (emailEl) emailEl.value = '';
+  var pwEl = document.getElementById('loginPassword'); if (pwEl) pwEl.value = '';
+  loginError('');
   showScreen('screen-welcome');
 }
 
@@ -435,16 +511,26 @@ function hideOfflineBanner() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Auto-login if returning student
+   Auto-login if a valid (non-expired) session exists
    ───────────────────────────────────────────────────────────── */
 (function init() {
-  const saved = localStorage.getItem('fp_student_name');
-  if (saved) {
-    document.getElementById('studentName').value = saved;
-    // Auto-enter for returning students
+  var teacherLink = document.getElementById('teacherLink');
+  if (teacherLink) teacherLink.href = FP.TEACHER_URL;
+
+  var session = FP.getSession && FP.getSession();
+  var saved = localStorage.getItem('fp_student_name');
+  if (session && saved) {
     studentName = saved;
     showScreen('screen-loading');
-    fetchProgress(saved);
+    if (new URLSearchParams(location.search).get('paid') === '1') {
+      handlePaidReturn(); // came back from Stripe — poll until unlocked
+    } else {
+      fetchProgress(saved);
+    }
+  } else {
+    // No valid session → make sure no stale session lingers, then show login.
+    if (!session && FP.clearSession) FP.clearSession();
+    showScreen('screen-welcome');
   }
 })();
 

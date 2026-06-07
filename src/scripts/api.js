@@ -49,18 +49,34 @@ FP.api = (function () {
   }
 
   /**
-   * Append auth token query parameters to a URL.
-   * Only applies to the Apps Script webhook — other endpoints (Formspree, etc.) are left untouched.
+   * Append auth query parameters (app token + session) to a webhook URL.
+   * Only applies to the Apps Script webhook — other endpoints (Formspree, etc.)
+   * are left untouched. The public teacher_token is gone; teacher authority now
+   * rides on the session, which the server validates by role.
    */
   function _appendToken(url) {
-    if (!FP.APP_TOKEN) return url;
     if (!FP.WEBHOOK_URL || url.indexOf(FP.WEBHOOK_URL) !== 0) return url;
+    var parts = [];
+    if (FP.APP_TOKEN) parts.push('token=' + encodeURIComponent(FP.APP_TOKEN));
+    var session = FP.getSession && FP.getSession();
+    if (session) parts.push('session=' + encodeURIComponent(session));
+    if (!parts.length) return url;
     var sep = url.indexOf('?') === -1 ? '?' : '&';
-    var tokenUrl = url + sep + 'token=' + encodeURIComponent(FP.APP_TOKEN);
-    if (FP.TEACHER_TOKEN) {
-      tokenUrl += '&teacher_token=' + encodeURIComponent(FP.TEACHER_TOKEN);
+    return url + sep + parts.join('&');
+  }
+
+  /**
+   * Inspect a parsed webhook response: if the server rejected us as
+   * Unauthorized (it answers 200 with { error: 'Unauthorized' }), drop the
+   * stale session and bounce to the login screen. Otherwise pass data through.
+   */
+  function _checkAuth(data) {
+    if (data && (data.error === 'Unauthorized' || data.message === 'Unauthorized')) {
+      if (FP.clearSession) FP.clearSession();
+      if (FP.redirectToLogin) FP.redirectToLogin();
+      throw new Error('Unauthorized');
     }
-    return tokenUrl;
+    return data;
   }
 
   /**
@@ -77,7 +93,7 @@ FP.api = (function () {
       .then(function (resp) {
         if (!resp.ok) throw new Error('GET failed: ' + resp.status);
         return resp.json();
-      });
+      }).then(_checkAuth);
   }
 
   /**
@@ -95,8 +111,9 @@ FP.api = (function () {
     // Inject auth tokens into the payload for Apps Script requests only
     var authedPayload = Object.assign({}, payload);
     var isWebhook = FP.WEBHOOK_URL && url.indexOf(FP.WEBHOOK_URL) === 0;
+    var session = FP.getSession && FP.getSession();
     if (isWebhook && FP.APP_TOKEN) authedPayload.token = FP.APP_TOKEN;
-    if (isWebhook && FP.TEACHER_TOKEN) authedPayload.teacher_token = FP.TEACHER_TOKEN;
+    if (isWebhook && session) authedPayload.session = session;
     return _fetch(url, {
       method: 'POST',
       mode: 'no-cors',
@@ -128,7 +145,7 @@ FP.api = (function () {
     }, opt.timeout).then(function (resp) {
       if (!resp.ok) throw new Error('POST failed: ' + resp.status);
       return resp.json();
-    });
+    }).then(_checkAuth);
   }
 
   return { get: get, postForm: postForm, postJson: postJson };
