@@ -495,13 +495,13 @@ function handleStripeWebhook(e) {
   return ContentService.createTextOutput('ok');
 }
 
-/** Per-email login throttle (5 attempts / 15 min). login is internet-reachable. */
+/** Per-email login throttle (10 attempts / 15 min). login is internet-reachable. */
 function loginRateLimited(email) {
   try {
     var cache = CacheService.getScriptCache();
     var key = 'login_rl_' + String(email).toLowerCase().trim();
     var count = parseInt(cache.get(key) || '0', 10);
-    if (count >= 5) return true;
+    if (count >= 10) return true;
     cache.put(key, String(count + 1), 15 * 60);
     return false;
   } catch (e) { return false; }
