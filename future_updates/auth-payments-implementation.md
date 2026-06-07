@@ -119,6 +119,10 @@ FluentPath (static HTML/CSS/vanilla JS on GitHub Pages, backed by Google Apps Sc
 5. Deploy both frontends; confirm login; set `AUTH_ENFORCED=true`; **delete** the `TEACHER_SECRET` Script Property; bump `CACHE_VERSION`.
 6. Rotate `APP_SECRET` (it leaked in git history); update `FP.APP_TOKEN` in both repos.
 
+### Hosting — resolve BEFORE cutover
+- **Production host is GitHub Pages** (`fluentpath.ca`, custom domain verified, HTTPS cert auto-managed, built from `master` root). The two-repo split assumes this. ✓ matches plan.
+- **Disconnect the vestigial Netlify site.** This repo is also wired to a Netlify site (`learningenglishsg`, no in-repo config — dashboard-connected GitHub App) that mirrors every push/PR to `learningenglishsg.netlify.app`. It does **not** serve the production domain, but post-cutover it would expose a second public copy of the login/paywall/teacher app pointed at the **prod** Apps Script backend (and, on a `*.netlify.app` host, `FP.ENV` resolves to `development` → DEV banner + `config.local.js` 404). Auth is still server-enforced there, so it's not a privilege hole — just an unmanaged surface. Steps: Netlify dashboard → site `learningenglishsg` → Site configuration → Build & deploy → **unlink repository** (or delete the site). Removes the parallel copy and the per-PR Netlify deploy-preview check.
+
 ### Manual setup you must do outside the code
 - DNS: `teacher.fluentpath.ca` `CNAME` → `<user>.github.io`; registrar forwarding for `fluent-path.com`/`fluent-path.ca` → `fluentpath.ca`; `CNAME` files in each repo.
 - Stripe: create account + a one-time Price; set `STRIPE_PRICE_ID`; add a webhook endpoint → the Apps Script `/exec?stripe=1` URL; copy `STRIPE_SECRET` + `STRIPE_WEBHOOK_SECRET`.
