@@ -112,6 +112,11 @@ FluentPath (static HTML/CSS/vanilla JS on GitHub Pages, backed by Google Apps Sc
 **Still manual at the physical split (Phase 6):** create the teacher GitHub repo; move the teacher-only files (`teacher.html`, `src/examiner-panel.html`, `examiner-panel.js`, `teacher-portal.js`, their CSS) out of this repo into it; run `npm run sync --dest=<teacher repo>` once to seed the shared/generated files; `git mv app.html index.html` here; set both `CNAME`s and the `ENABLE_TEACHER_SYNC`/`TEACHER_REPO_SLUG` vars + `TEACHER_REPO_TOKEN` secret.
 
 ## Phase 6 — Migration & cutover (manual checklist — do NOT script blindly)
+
+> **Step-by-step runbook:** `future_updates/phase-6-cutover-runbook.md` expands
+> this checklist into ordered stages with per-stage verify + rollback. The
+> summary below stays here for context.
+
 1. Deploy backend with `AUTH_ENFORCED` unset (legacy paths still accepted). Set `PW_PEPPER` first (hashing needs it).
 2. **Bootstrap the first teacher account manually.** The new frontend no longer sends the legacy `teacher_token`, so the grace path can't authorize a teacher action until a teacher *session* exists — chicken-and-egg. Break it once by running `create_account` from the Apps Script editor (or a temporary `doGet` shim) to insert the teacher's own row (`role=teacher`). After that the teacher can log in at `teacher.html` and the in-UI "Create student account" works normally.
 3. Teacher logs into the new teacher site, uses "Create student account" for each existing student with their **existing `student_name`** as the key — existing data associates immediately (no data movement).
