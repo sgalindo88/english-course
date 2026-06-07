@@ -36,14 +36,16 @@ const SHARED_FILES = [
   'src/scripts/utils.js',
   'src/scripts/i18n.js',
   'src/scripts/call-request.js',
+  'src/scripts/password-reset.js',
   'src/styles/theme.css',
   'src/styles/mobile.css',
 ];
 
 // Teacher service worker (generated from this repo's sw.js).
-const TEACHER_CACHE_VERSION = 'fp-teacher-v1'; // bump at cutover (Phase 6)
+const TEACHER_CACHE_VERSION = 'fp-teacher-v2'; // bump to evict old caches
 const TEACHER_APP_SHELL = [
   './',
+  './index.html',
   './teacher.html',
   './src/examiner-panel.html',
   './src/scripts/config.js',
@@ -53,6 +55,7 @@ const TEACHER_APP_SHELL = [
   './src/scripts/examiner-panel.js',
   './src/scripts/call-request.js',
   './src/scripts/i18n.js',
+  './src/scripts/password-reset.js',
   './src/styles/theme.css',
   './src/styles/mobile.css',
   './src/styles/teacher-portal.css',
