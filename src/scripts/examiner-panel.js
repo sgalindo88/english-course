@@ -1528,8 +1528,9 @@ Teacher notes: ${document.getElementById('today-notes')?.value || 'none'}
 Write a professional but warm 3-4 paragraph summary covering: what was achieved this week, key strengths observed, areas needing improvement, and a brief plan or encouragement for next week. Keep it practical and encouraging for an adult immigrant learner.`;
 
   try {
-    // Route through Apps Script proxy to avoid CORS and keep API key server-side
-    const data = await FP.api.postJson(WEBHOOK_URL + '?action=ai_summary', { prompt: prompt });
+    // Route through Apps Script (form-encoded so the cross-origin response is
+    // readable — application/json would hit a CORS preflight Apps Script can't answer).
+    const data = await FP.api.postRead(WEBHOOK_URL + '?action=ai_summary', { prompt: prompt }, { maxValueLength: 50000 });
     const text = data.summary || data.text || '';
     if (!text) throw new Error('Empty response from AI proxy');
     document.getElementById('week-summary-text').value = text;
@@ -1943,7 +1944,7 @@ async function promoteStudent() {
 
   showStatus('promote-status', 'Promoting...', false);
   try {
-    var result = await FP.api.postJson(
+    var result = await FP.api.postRead(
       WEBHOOK_URL + '?action=promote_student',
       { student_name: name, new_level: newLevel }
     );

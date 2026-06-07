@@ -25,7 +25,7 @@
     setMsg(err, '');
     if (!email || !pw) { setMsg(err, 'Enter your email and password.'); return; }
     try {
-      var res = await FP.api.postJson(WEBHOOK_URL + '?action=login', { email: email, password: pw });
+      var res = await FP.api.postRead(WEBHOOK_URL + '?action=login', { email: email, password: pw });
       if (!res || !res.ok) { setMsg(err, (res && res.error) || 'Login failed.'); return; }
       if (res.role !== 'teacher') { setMsg(err, 'This is not a teacher account.'); return; }
       localStorage.setItem(FP.KEYS.SESSION, res.session);
@@ -40,7 +40,7 @@
 
   window.teacherLogout = function() {
     var s = FP.getSession && FP.getSession();
-    if (s) { try { FP.api.postJson(WEBHOOK_URL + '?action=logout', { session: s }); } catch (e) { /* ignore */ } }
+    if (s) { try { FP.api.postRead(WEBHOOK_URL + '?action=logout', { session: s }); } catch (e) { /* ignore */ } }
     if (FP.clearSession) FP.clearSession();
     show('login');
   };
@@ -54,7 +54,7 @@
     setMsg(st, '');
     if (!name || !email || !pw) { setMsg(st, 'All fields are required.'); return; }
     try {
-      var res = await FP.api.postJson(WEBHOOK_URL + '?action=create_account',
+      var res = await FP.api.postRead(WEBHOOK_URL + '?action=create_account',
         { student_name: name, email: email, password: pw, role: 'student' });
       if (res && res.ok) {
         setMsg(st, 'Account created for ' + name + '.', true);

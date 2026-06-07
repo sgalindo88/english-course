@@ -148,7 +148,32 @@ FP.api = (function () {
     }).then(_checkAuth);
   }
 
-  return { get: get, postForm: postForm, postJson: postJson };
+  /**
+   * POST form-urlencoded with a READABLE JSON response (CORS mode).
+   * Unlike postForm (no-cors, fire-and-forget) and postJson (application/json,
+   * which triggers a CORS preflight Apps Script can't answer), this sends a
+   * "simple" request — no preflight — so the cross-origin response is readable.
+   * Use it for endpoints whose reply we need to act on: login, logout,
+   * create_account, create_checkout. Auth token + session are injected.
+   */
+  function postRead(url, payload, options) {
+    var opt = options || {};
+    var authed = Object.assign({}, payload);
+    var isWebhook = FP.WEBHOOK_URL && url.indexOf(FP.WEBHOOK_URL) === 0;
+    var session = FP.getSession && FP.getSession();
+    if (isWebhook && FP.APP_TOKEN) authed.token = FP.APP_TOKEN;
+    if (isWebhook && session) authed.session = session;
+    return _fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: _encodeForm(authed, opt.maxValueLength),
+    }, opt.timeout).then(function (resp) {
+      if (!resp.ok) throw new Error('POST failed: ' + resp.status);
+      return resp.json();
+    }).then(_checkAuth);
+  }
+
+  return { get: get, postForm: postForm, postJson: postJson, postRead: postRead };
 })();
 
 

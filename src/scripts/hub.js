@@ -49,7 +49,7 @@ async function enterHub() {
 
   showScreen('screen-loading');
   try {
-    var res = await FP.api.postJson(WEBHOOK_URL + '?action=login', { email: email, password: password });
+    var res = await FP.api.postRead(WEBHOOK_URL + '?action=login', { email: email, password: password });
     if (!res || !res.ok) {
       showScreen('screen-welcome');
       loginError((res && res.error) || 'Login failed. Please try again.');
@@ -96,7 +96,7 @@ async function startCheckout() {
   var err = document.getElementById('paywallError');
   if (err) err.style.display = 'none';
   try {
-    var res = await FP.api.postJson(WEBHOOK_URL + '?action=create_checkout', {});
+    var res = await FP.api.postRead(WEBHOOK_URL + '?action=create_checkout', {});
     if (res && res.url) { location.href = res.url; return; }
     throw new Error((res && res.error) || 'Could not start checkout.');
   } catch (e) {
@@ -395,7 +395,7 @@ function logout() {
   var session = FP.getSession && FP.getSession();
   if (session) {
     // Fire-and-forget server-side revoke; don't block the UI on it.
-    try { FP.api.postJson(WEBHOOK_URL + '?action=logout', { session: session }); } catch (e) { /* ignore */ }
+    try { FP.api.postRead(WEBHOOK_URL + '?action=logout', { session: session }); } catch (e) { /* ignore */ }
   }
   if (FP.clearSession) FP.clearSession();
   try { localStorage.removeItem('fp_student_name'); } catch (e) { /* ignore */ }
