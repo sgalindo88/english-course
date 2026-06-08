@@ -216,6 +216,9 @@ export function loadAppsScriptAuth(props = {}) {
   globalThis.Utilities = {
     getUuid: () => `uuid-${++uuidN}`,
     base64Encode: () => '',
+    base64EncodeWebSafe: (s) => Buffer.from(String(s), 'utf8').toString('base64url'),
+    base64DecodeWebSafe: (s) => [...Buffer.from(String(s), 'base64url')],
+    newBlob: (bytes) => ({ getDataAsString: () => Buffer.from(bytes).toString('utf8') }),
     computeDigest: fakeDigest,
     computeHmacSha256Signature: (value, key) => fakeDigest('HMAC', String(value) + '|' + String(key)),
     DigestAlgorithm: { SHA_256: 'SHA_256' },

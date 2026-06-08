@@ -113,7 +113,8 @@
     var btn = el('fp-reset-save'), label = btn.textContent;
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
-      var res = await FP.api.postRead(FP.WEBHOOK_URL + '?action=reset_password', { token: resetToken, password: pw });
+      // 'reset_token', not 'token' — api.js reserves 'token' for the app token.
+      var res = await FP.api.postRead(FP.WEBHOOK_URL + '?action=reset_password', { reset_token: resetToken, password: pw });
       if (res && res.ok) {
         if (FP.clearSession) FP.clearSession(); // any old session was revoked server-side
         el('fp-view-set').innerHTML =

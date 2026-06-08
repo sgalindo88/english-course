@@ -363,59 +363,47 @@ function revokeSession(token) {
 
 function cacheKeyForSession(token) { return 'session_' + token; }
 
-// ── Password reset tokens ─────────────────────────────
-// A reset token is a random UUID emailed to the user; we store only its
-// SHA-256 hash (high-entropy → one fast digest is enough, no iteration).
+// ── Password reset tokens (STATELESS / signed) ────────
+// Neither a Sheet nor CacheService is reliably consistent across requests in
+// Apps Script (a token written by request_reset isn't found by reset_password
+// moments later). So reset tokens carry their own data and are verified by an
+// HMAC signature — nothing to look up, so no read-after-write lag is possible.
+// Format: base64url("email|exp|pwFingerprint") + "." + hex(HMAC-SHA256(payload, pepper)).
+// The pwFingerprint (first 12 chars of the account's current pw_hash) binds the
+// token to the password at issue time: using it changes pw_hash, which makes
+// the token (and any other outstanding ones) no longer match → implicitly single-use.
 var RESET_TTL_MS = 24 * 60 * 60 * 1000; // reset link valid 24 hours
 
-function hashToken(token) {
-  var digest = Utilities.computeDigest(
-    Utilities.DigestAlgorithm.SHA_256, pwPepper() + String(token), Utilities.Charset.UTF_8);
-  return bytesToHex(digest);
+function resetSign(payloadB64) {
+  return bytesToHex(Utilities.computeHmacSha256Signature(payloadB64, pwPepper()));
 }
 
-/** Create a reset-token row for an email and return the RAW token (to email out). */
-function createResetToken(email) {
-  var token = Utilities.getUuid() + Utilities.getUuid();
-  var now = new Date();
-  var headers = HEADERS['PasswordResets'];
-  getOrCreateSheet('PasswordResets', headers).appendRow([
-    hashToken(token), String(email).toLowerCase().trim(),
-    now.toISOString(), new Date(now.getTime() + RESET_TTL_MS).toISOString(), ''
-  ]);
-  return token;
+/** Create a signed reset token for an account; returns the RAW token (to email). */
+function createResetToken(account) {
+  var payload = [
+    String(account.email).toLowerCase().trim(),
+    new Date().getTime() + RESET_TTL_MS,
+    String(account.pw_hash || '').substring(0, 12)
+  ].join('|');
+  var b64 = Utilities.base64EncodeWebSafe(payload);
+  return b64 + '.' + resetSign(b64);
 }
 
-/** Validate a raw reset token → { email, _row } if valid (unused/unexpired), else null.
- *  Scans values directly (NOT createTextFinder): the token row is searched
- *  seconds-to-minutes after it's written, which is exactly when TextFinder's
- *  index hasn't caught up yet — the cause of spurious "invalid/expired" errors. */
+/** Verify a signed reset token → { email, _pwfp } if signature + expiry are valid, else null. */
 function consumeResetToken(token) {
   token = String(token || '').trim();
-  if (!token) return null;
-  var headers = HEADERS['PasswordResets'];
-  var sheet = getOrCreateSheet('PasswordResets', headers);
-  if (sheet.getLastRow() < 2) return null;
-  var th = hashToken(token);
-  var hashCol = headers.indexOf('token_hash');
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
-  for (var i = data.length - 1; i >= 0; i--) { // most recent match first
-    if (String(data[i][hashCol]) !== th) continue;
-    var row = {};
-    for (var j = 0; j < headers.length; j++) row[headers[j]] = data[i][j];
-    if (truthy(row.used)) return null;
-    var exp = new Date(row.expires_at).getTime();
-    if (!exp || exp < new Date().getTime()) return null;
-    return { email: String(row.email).toLowerCase().trim(), _row: i + 2 };
-  }
-  return null;
-}
-
-/** Mark a reset-token row used (single-use). */
-function markResetUsed(rowNum) {
-  var headers = HEADERS['PasswordResets'];
-  var sheet = getOrCreateSheet('PasswordResets', headers);
-  sheet.getRange(rowNum, headers.indexOf('used') + 1).setValue('true');
+  var dot = token.lastIndexOf('.');
+  if (dot < 1) return null;
+  var b64 = token.slice(0, dot);
+  var sig = token.slice(dot + 1);
+  if (!safeEquals(sig, resetSign(b64))) return null; // tampered / wrong secret
+  var payload;
+  try { payload = Utilities.newBlob(Utilities.base64DecodeWebSafe(b64)).getDataAsString(); } catch (e) { return null; }
+  var parts = payload.split('|');
+  if (parts.length < 3) return null;
+  var exp = parseInt(parts[1], 10);
+  if (!exp || exp < new Date().getTime()) return null;
+  return { email: String(parts[0]).toLowerCase().trim(), _pwfp: parts[2] };
 }
 
 /** Set a new password (fresh salt + hash) on an existing account row. */
@@ -1031,11 +1019,9 @@ var HEADERS = {
   'Sessions': [
     'token', 'email', 'role', 'student_name',
     'issued_at', 'expires_at', 'revoked'
-  ],
-  // Auth: one-time, expiring password-reset tokens (token stored HASHED).
-  'PasswordResets': [
-    'token_hash', 'email', 'created_at', 'expires_at', 'used'
   ]
+  // (Password-reset tokens are stored in CacheService, not a sheet — see
+  //  createResetToken — because Sheets aren't read-after-write consistent across requests.)
 };
 
 
@@ -2536,7 +2522,7 @@ var POST_HANDLERS = {
     if (email && !resetRateLimited(email)) {
       var account = findAccountByEmail(email);
       if (account && truthy(account.active)) {
-        sendPasswordResetEmail(email, account.role, createResetToken(email));
+        sendPasswordResetEmail(email, account.role, createResetToken(account));
       }
     }
     return { _json: { ok: true } };
@@ -2544,7 +2530,9 @@ var POST_HANDLERS = {
 
   reset_password: function(params, e) {
     var body = jsonBody(e);
-    var token = String(paramOrBody(params, body, 'token')).trim();
+    // NB: the reset token is 'reset_token', NOT 'token' — api.js overwrites a
+    // 'token' field with the app token, which would clobber the reset token.
+    var token = String(paramOrBody(params, body, 'reset_token')).trim();
     var newPassword = String(paramOrBody(params, body, 'password'));
     if (!token || !newPassword) return { _json: { ok: false, error: 'Invalid reset link.' } };
     if (newPassword.length < 6) return { _json: { ok: false, error: 'Password must be at least 6 characters.' } };
@@ -2552,9 +2540,13 @@ var POST_HANDLERS = {
     if (!reset) return { _json: { ok: false, error: 'This reset link is invalid or has expired.' } };
     var account = findAccountByEmail(reset.email);
     if (!account) return { _json: { ok: false, error: 'Account not found.' } };
-    setAccountPassword(account, newPassword);
-    markResetUsed(reset._row);
-    revokeSessionsForEmail(reset.email); // force re-login everywhere with the new password
+    // Single-use: the token is bound to the password at issue time. If it no
+    // longer matches, the password was already changed (this link was used).
+    if (String(account.pw_hash || '').substring(0, 12) !== reset._pwfp) {
+      return { _json: { ok: false, error: 'This reset link has already been used.' } };
+    }
+    setAccountPassword(account, newPassword); // changes pw_hash → invalidates this token
+    revokeSessionsForEmail(reset.email);      // force re-login everywhere with the new password
     return { _json: { ok: true } };
   },
 
@@ -2896,3 +2888,4 @@ function authorizeScript() {
 
   Logger.log('Authorization complete. You can now redeploy the web app.');
 }
+

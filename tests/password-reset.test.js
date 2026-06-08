@@ -60,7 +60,7 @@ describe('reset_password', () => {
     fp.POST_HANDLERS.request_reset({ email: 'maria@x.com' }, {});
     const token = tokenFromMail(fp);
 
-    const res = fp.POST_HANDLERS.reset_password({ token, password: 'brandnew1' }, {});
+    const res = fp.POST_HANDLERS.reset_password({ reset_token: token, password: 'brandnew1' }, {});
     expect(res._json.ok).toBe(true);
 
     expect(fp.POST_HANDLERS.login({ email: 'maria@x.com', password: 'brandnew1' }, {})._json.ok).toBe(true);
@@ -72,16 +72,16 @@ describe('reset_password', () => {
     makeStudent(fp);
     fp.POST_HANDLERS.request_reset({ email: 'maria@x.com' }, {});
     const token = tokenFromMail(fp);
-    expect(fp.POST_HANDLERS.reset_password({ token, password: 'first123' }, {})._json.ok).toBe(true);
-    const second = fp.POST_HANDLERS.reset_password({ token, password: 'second123' }, {});
+    expect(fp.POST_HANDLERS.reset_password({ reset_token: token, password: 'first123' }, {})._json.ok).toBe(true);
+    const second = fp.POST_HANDLERS.reset_password({ reset_token: token, password: 'second123' }, {});
     expect(second._json.ok).toBe(false);
-    expect(second._json.error).toMatch(/invalid or has expired/i);
+    expect(second._json.error).toMatch(/already been used|invalid or has expired/i);
   });
 
   it('rejects an unknown/garbage token', () => {
     const fp = loadAppsScriptAuth({ PW_PEPPER: 'pep' });
     makeStudent(fp);
-    expect(fp.POST_HANDLERS.reset_password({ token: 'not-a-real-token', password: 'whatever1' }, {})._json.ok).toBe(false);
+    expect(fp.POST_HANDLERS.reset_password({ reset_token: 'not-a-real-token', password: 'whatever1' }, {})._json.ok).toBe(false);
   });
 
   it('rejects a too-short password', () => {
@@ -89,7 +89,7 @@ describe('reset_password', () => {
     makeStudent(fp);
     fp.POST_HANDLERS.request_reset({ email: 'maria@x.com' }, {});
     const token = tokenFromMail(fp);
-    const res = fp.POST_HANDLERS.reset_password({ token, password: '123' }, {});
+    const res = fp.POST_HANDLERS.reset_password({ reset_token: token, password: '123' }, {});
     expect(res._json.ok).toBe(false);
     expect(res._json.error).toMatch(/at least 6/i);
   });
@@ -101,21 +101,24 @@ describe('reset_password', () => {
     expect(fp.validateSession(session)).not.toBeNull(); // valid before reset
 
     fp.POST_HANDLERS.request_reset({ email: 'maria@x.com' }, {});
-    fp.POST_HANDLERS.reset_password({ token: tokenFromMail(fp), password: 'newpass1' }, {});
+    fp.POST_HANDLERS.reset_password({ reset_token: tokenFromMail(fp), password: 'newpass1' }, {});
 
     expect(fp.validateSession(session)).toBeNull(); // old session killed
   });
 });
 
 describe('reset token helpers', () => {
-  it('consumeResetToken validates a fresh token and rejects after markResetUsed via the handler', () => {
+  it('consumeResetToken validates a fresh signed token and rejects junk', () => {
     const fp = loadAppsScriptAuth({ PW_PEPPER: 'pep' });
     makeStudent(fp);
-    const raw = fp.createResetToken('maria@x.com');
+    const acct = fp.findAccountByEmail('maria@x.com');
+    const raw = fp.createResetToken(acct);
     const consumed = fp.consumeResetToken(raw);
     expect(consumed).not.toBeNull();
     expect(consumed.email).toBe('maria@x.com');
     expect(fp.consumeResetToken('')).toBeNull();
     expect(fp.consumeResetToken('wrong')).toBeNull();
+    // tampered signature is rejected
+    expect(fp.consumeResetToken(raw.slice(0, -2) + 'xx')).toBeNull();
   });
 });
