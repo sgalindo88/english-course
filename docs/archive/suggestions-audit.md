@@ -1,6 +1,6 @@
 # FluentPath — Suggestions Audit
 
-**Based on:** [SUGGESTIONS.md](SUGGESTIONS.md) (45 improvement suggestions)
+**Based on:** [suggestions.md](suggestions.md) (45 improvement suggestions)
 **Audited against:** Implementation Phases 1–4 + post-phase quick wins (11 April 2026)
 **Result:** 36 implemented, 3 low-effort remaining, 6 deferred
 

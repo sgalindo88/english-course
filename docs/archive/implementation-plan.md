@@ -1,6 +1,6 @@
 # FluentPath — Implementation Plan
 
-**Based on:** [SUGGESTIONS.md](SUGGESTIONS.md)
+**Based on:** [suggestions.md](suggestions.md)
 **Goal:** Transform FluentPath from a functional prototype into a production-ready platform
 **Approach:** Four phases, each delivering standalone value. No phase depends on a later phase.
 

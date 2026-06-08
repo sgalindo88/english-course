@@ -71,48 +71,39 @@ Two audiences -- **students** taking tests and completing lessons, and **teacher
 
 ## Project Structure
 
+> **Two-repo split.** This is the **student app + backend** repo (served at `fluentpath.ca`). The **teacher dashboard** (`teacher.html`, `examiner-panel.*`, `teacher-portal.js`) lives in a separate repo served at `teacher.fluentpath.ca`. Shared frontend files (`config.js`, `api.js`, `utils.js`, `i18n.js`, `call-request.js`, `password-reset.js`, `theme.css`, `mobile.css`) are authored here and propagated to the teacher repo via `npm run sync`. The Apps Script backend (`apps-script.js`) is shared by both and lives only here.
+
 ```
-english-course/
-├── index.html                     # Student hub / landing portal
-├── teacher.html                   # Teacher portal (links to dashboard)
-├── sw.js                          # Service worker (offline resilience)
+fluentpath/
+├── index.html                     # Student app (login → hub → journey)
+├── sw.js                          # Service worker (offline resilience, app shell)
+├── CNAME                          # Custom domain (fluentpath.ca)
 ├── apps-script.js                 # Google Apps Script backend (deploy via clasp)
 ├── appsscript.json                # Apps Script manifest (V8 runtime, OAuth scopes)
-├── package.json                   # npm project (lint, test, dev, clasp scripts)
+├── package.json                   # npm project (lint, test, sync, clasp scripts)
 ├── eslint.config.mjs              # ESLint 9 flat config
-├── .github/workflows/ci.yml       # GitHub Actions CI (lint + test on push/PR)
+├── .github/workflows/ci.yml       # CI (lint + test; optional teacher-repo sync)
 ├── src/
-│   ├── student-initial-test.html  # Placement test (student) — HTML only
-│   ├── student-course.html        # Daily lesson (student) — HTML only
-│   ├── examiner-panel.html        # Teacher dashboard (all-in-one) — HTML only
+│   ├── student-initial-test.html  # Placement test (student)
+│   ├── student-course.html        # Daily lesson (student)
 │   ├── scripts/
-│   │   ├── hub.js                 # Student hub logic + achievements
-│   │   ├── teacher-portal.js      # Teacher portal logic
+│   │   ├── config.js              # Shared config (endpoints, env, session helpers)
+│   │   ├── config.local.js        # Dev overrides (gitignored)
+│   │   ├── api.js                 # Fetch wrapper (token/session, save overlay, SW)
+│   │   ├── utils.js               # Shared formatting utilities
+│   │   ├── i18n.js                # Level-aware Spanish translation
+│   │   ├── call-request.js        # Student-initiated video-call requests
+│   │   ├── password-reset.js      # Shared password-reset modal (forgot / set-new)
+│   │   ├── hub.js                 # Student hub: journey, achievements, paywall
 │   │   ├── student-test.js        # Placement test logic
 │   │   ├── student-lesson.js      # Daily lesson logic (timer, pause, SRS)
-│   │   ├── examiner-panel.js      # Teacher dashboard logic (class overview, quick grading)
-│   │   ├── config.js              # Shared config (endpoints, auth, constants, environment)
-│   │   ├── config.local.js        # Auth tokens + dev webhook (gitignored)
-│   │   ├── api.js                 # Fetch wrapper, save overlay, SW registration, dev banner
-│   │   ├── utils.js               # Shared utilities (7 functions)
-│   │   ├── call-request.js        # Student-initiated video call request system
-│   │   ├── i18n.js                # Level-aware Spanish translation
 │   │   └── checkpoint.js          # Session recovery / auto-save
-│   └── styles/
-│       ├── theme.css              # Shared design tokens (WCAG AA compliant)
-│       ├── mobile.css             # Mobile-first responsive enhancements
-│       ├── hub.css                # Student hub + achievement badge styles
-│       ├── teacher-portal.css     # Teacher portal styles
-│       ├── student-test.css       # Placement test styles
-│       ├── student-lesson.css     # Daily lesson + pause overlay styles
-│       └── examiner-panel.css     # Teacher dashboard + class overview styles
-├── tests/
-│   ├── helpers.js                 # Test harness (loads global JS into vitest)
-│   ├── utils.test.js              # 23 tests for utility functions
-│   └── apps-script.test.js        # 22 tests for backend functions
-└── legacy/
-    ├── examiner-marking.html      # Standalone marking (superseded by dashboard)
-    └── examiner-marking.css       # Legacy marking styles
+│   └── styles/                    # theme, mobile, hub, student-test, student-lesson
+├── scripts/
+│   └── sync-shared.mjs            # Propagate shared files → teacher repo (npm run sync)
+├── tests/                         # vitest: utils, apps-script, auth, stripe, password-reset
+├── docs/                          # All documentation — see docs/README.md
+└── legacy/                        # Deprecated standalone marking page (superseded)
 ```
 
 ---
@@ -418,7 +409,7 @@ Print-inspired, academic, warm -- designed to feel calm and professional for adu
 
 **Validation:** All POST endpoints validate required parameters and return clear error messages for missing/invalid input. Errors are logged server-side in an "Error Log" sheet tab.
 
-Full schema documented in [`GOOGLE_SHEETS_SCHEMA.md`](GOOGLE_SHEETS_SCHEMA.md).
+Full schema documented in [`docs/google-sheets-schema.md`](docs/google-sheets-schema.md).
 
 ### AI Provider (pluggable) -- via Apps Script Proxy
 
@@ -486,7 +477,7 @@ Students request a call via a floating "Request a Video Call" button; the teache
 
 ## Google Sheets Schema
 
-The full database schema is documented in [`GOOGLE_SHEETS_SCHEMA.md`](GOOGLE_SHEETS_SCHEMA.md), covering 10 tabs:
+The full database schema is documented in [`docs/google-sheets-schema.md`](docs/google-sheets-schema.md), covering 10 tabs:
 
 | Tab | Purpose |
 |-----|---------|

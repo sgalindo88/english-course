@@ -26,7 +26,7 @@ As of 2026-06-04 the live site at `/` serves a temporary **coming-soon landing p
 
 ## How to implement this later (copy-paste prompt)
 
-> Implement the plan in `future_updates/auth-payments-implementation.md`. This adds (1) real teacher-created per-student login with server-issued sessions, (2) a student-site / teacher-subdomain split across two GitHub Pages repos, and (3) Stripe one-time payment gating the daily course (placement test stays free; teacher can grant free access).
+> Implement the plan in `docs/auth-payments.md`. This adds (1) real teacher-created per-student login with server-issued sessions, (2) a student-site / teacher-subdomain split across two GitHub Pages repos, and (3) Stripe one-time payment gating the daily course (placement test stays free; teacher can grant free access).
 >
 > Work backend-first and keep everything behind the `AUTH_ENFORCED` first-run grace flag so we never lock ourselves out. Implement in this order: Phase 1 (accounts/sessions/hashing in `apps-script.js`) → Phase 2 (server-authoritative course gating) → Phase 3 (Stripe checkout + webhook re-fetch) → Phase 4 (frontend login + `config.js`/`api.js`) → Phase 5 (two-repo split + `shared/` sync) → Phase 7 tests. Do NOT do the Phase 6 cutover steps or any DNS/Stripe-dashboard/Script-Property setup yourself — produce a checklist for me to do those manually.
 >
@@ -113,7 +113,7 @@ FluentPath (static HTML/CSS/vanilla JS on GitHub Pages, backed by Google Apps Sc
 
 ## Phase 6 — Migration & cutover (manual checklist — do NOT script blindly)
 
-> **Step-by-step runbook:** `future_updates/phase-6-cutover-runbook.md` expands
+> **Step-by-step runbook:** `docs/cutover-runbook.md` expands
 > this checklist into ordered stages with per-stage verify + rollback. The
 > summary below stays here for context.
 

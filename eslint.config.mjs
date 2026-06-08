@@ -94,7 +94,7 @@ export default [
       'node_modules/',
       'apps-script.js',
       'legacy/',
-      'future_updates/',
+      'docs/',
       '*.md',
     ],
   },
