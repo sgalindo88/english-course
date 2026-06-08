@@ -39,14 +39,16 @@ const SHARED_FILES = [
   'src/scripts/password-reset.js',
   'src/styles/theme.css',
   'src/styles/mobile.css',
+  'favicon.svg',
 ];
 
 // Teacher service worker (generated from this repo's sw.js).
-const TEACHER_CACHE_VERSION = 'fp-teacher-v3'; // bump to evict old caches
+const TEACHER_CACHE_VERSION = 'fp-teacher-v4'; // bump to evict old caches
 const TEACHER_APP_SHELL = [
   './',
   './index.html',
   './teacher.html',
+  './favicon.svg',
   './src/examiner-panel.html',
   './src/scripts/config.js',
   './src/scripts/api.js',
