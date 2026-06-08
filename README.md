@@ -105,7 +105,6 @@ fluentpath/
 ├── scripts/
 │   └── sync-shared.mjs            # Propagate shared files → teacher repo (npm run sync)
 ├── tests/                         # vitest: utils, apps-script, auth, stripe, password-reset
-├── docs/                          # All documentation — see docs/README.md
 └── legacy/                        # Deprecated standalone marking page (superseded)
 ```
 
@@ -414,7 +413,7 @@ Print-inspired, academic, warm -- designed to feel calm and professional for adu
 
 **Validation:** All POST endpoints validate required parameters and return clear error messages for missing/invalid input. Errors are logged server-side in an "Error Log" sheet tab.
 
-Full schema documented in [`docs/google-sheets-schema.md`](docs/google-sheets-schema.md).
+Full schema documented in the [Google Sheets Schema](#google-sheets-schema) section below.
 
 ### AI Provider (pluggable) -- via Apps Script Proxy
 
@@ -482,7 +481,7 @@ Students request a call via a floating "Request a Video Call" button; the teache
 
 ## Google Sheets Schema
 
-The full database schema is documented in [`docs/google-sheets-schema.md`](docs/google-sheets-schema.md), covering 10 tabs:
+The full database schema covers 10 tabs:
 
 | Tab | Purpose |
 |-----|---------|

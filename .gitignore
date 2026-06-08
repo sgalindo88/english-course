@@ -1,6 +1,9 @@
 # DDEV local development
 .ddev/
 
+# Local-only dev docs (planning, runbooks, schema notes — not published)
+docs/
+
 # Node
 node_modules/
 
