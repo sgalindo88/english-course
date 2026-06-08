@@ -101,7 +101,7 @@ FP.clearSession = function () {
 FP.redirectToLogin = function () {
   var inSrc = location.pathname.indexOf('/src/') >= 0;
   var root = inSrc ? '../' : './';
-  location.href = root + (FP.IS_TEACHER_SITE ? 'teacher.html' : 'index.html');
+  location.href = root + (FP.IS_TEACHER_SITE ? 'teacher.html' : 'app.html');
 };
 
 // ── Load config.local.js (optional, gitignored) ─────────

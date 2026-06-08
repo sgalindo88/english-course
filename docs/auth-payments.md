@@ -5,22 +5,23 @@
 
 ---
 
-## ⚠️ Temporary "coming soon" landing page is live (do this first)
+## ℹ️ Public landing page is live — the app entry point is `app.html` (read this first)
 
-As of 2026-06-04 the live site at `/` serves a temporary **coming-soon landing page** while the app is revamped. The real app was moved aside, **not deleted**:
+As of 2026-06-07 the live site at `/` serves the real **brochure landing page** — a short, public "what is FluentPath / how it works / pricing" page with **Student login** and **Teacher login** buttons. The student app sits behind it at `app.html`:
 
-- `index.html` → the standalone coming-soon page (self-contained: inline CSS, no app dependencies).
-- `app.html` → the real student app (the former `index.html`, git-tracked rename so history follows it). Reachable directly at `/app.html`.
-- `sw.js` `CACHE_VERSION` was bumped `fp-v7` → `fp-v8` so returning visitors get the new page instead of a stale cached app shell.
+- `index.html` → the brochure landing page (self-contained: inline CSS, no app dependencies). **This stays the entry point** — do **not** revert it.
+- `app.html` → the student app (login → hub → journey; the former `index.html`, git-tracked rename so history follows it). The landing page's "Student login" button links here. Reachable directly at `/app.html`.
+- The landing page's "Teacher login" / "For teachers →" links point at `https://teacher.fluentpath.ca` (hardcoded — the landing page loads no `config.js`).
+- `sw.js` `CACHE_VERSION` is `fp-v12`; `APP_SHELL` caches both `./index.html` (landing) and `./app.html` (app). Internal "return to app" links (`src/student-course.html`, `src/student-initial-test.html`) and `FP.redirectToLogin` (`config.js`) point at `app.html`, **not** `index.html`.
 
-**When the revamp is ready, revert the landing page before (or as part of) implementing this plan:**
+**Implications for this plan — the app entry point is now `app.html`, so wherever an earlier draft of this plan said "`index.html`" for the *student app* (login screen, paywall, hub), read it as `app.html`.** The phases below have been updated accordingly. Two concrete consequences:
 
-1. Restore the app as the entry point: `git mv app.html index.html` (overwrites the temporary landing page; if you want to keep the landing page around, `git rm app.html` only after copying it elsewhere).
-2. Bump `sw.js` `CACHE_VERSION` again (e.g. `fp-v8` → `fp-v9`) so the coming-soon page is evicted from caches. **Note:** Phase 5 / Phase 6 below also bump `CACHE_VERSION` at cutover — if you do the revert and the auth cutover together, a single bump covers both; otherwise bump once now and again at cutover.
-3. If this plan's two-repo split (Phase 5) is being done at the same time, the revert folds into that work — `index.html` lands in the student repo as the real app entry, and the coming-soon page can simply be dropped.
-4. Confirm internal links/SW `APP_SHELL` (`sw.js:14`) point at `index.html` as the app, not the landing page, and that `teacher.html` is unaffected (it was untouched by the landing-page swap).
+1. **No "revert the landing page" step.** The two-repo split (Phase 5/6) keeps `index.html` = landing and `app.html` = app in the student repo; there is no `git mv app.html index.html`.
+2. **Stripe redirect + login links target `app.html`** (see Phase 3 `success_url`/`cancel_url` and Phase 4), so a paying/returning student lands back in the app, not on the brochure.
 
-> Commit reference for the landing-page swap: "Add temporary coming-soon landing page; move app to app.html".
+When payments go live, the landing page's **"Payments coming soon"** badge (`index.html`) is the spot to swap in a real call-to-action; and if self-signup is ever added, that's where the "Register" button would go.
+
+> Commit references: "Add temporary coming-soon landing page; move app to app.html" (original move), then "Go live: student app at index.html, teacher split to teacher repo" (reverted), then the brochure landing page (re-introduces `app.html`).
 
 ---
 
@@ -86,14 +87,14 @@ FluentPath (static HTML/CSS/vanilla JS on GitHub Pages, backed by Google Apps Sc
 
 ## Phase 3 — Stripe (`apps-script.js`)
 - Script Properties (server-only): `STRIPE_SECRET, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_ID`, plus `STUDENT_URL`/`TEACHER_URL` (also replace hardcoded `sgalindo88.github.io/fluentpath` email links at `apps-script.js:296,308,330-331,344`).
-- `create_checkout` (POST, **student session required**): resolve student from session; `UrlFetchApp` POST to `https://api.stripe.com/v1/checkout/sessions` (`mode=payment`, `line_items[0][price]=STRIPE_PRICE_ID`, `client_reference_id=student_name`, `customer_email`, `success_url=https://fluentpath.ca/?paid=1`, `cancel_url=…?paid=0`). Return `{url}`; frontend redirects. (`UrlFetchApp` already authorized — `authorizeScript` 2234.) **URL-encode** every value when assembling the form body (`encodeURIComponent`) — `student_name`/email can contain spaces or accents that would otherwise corrupt the request.
+- `create_checkout` (POST, **student session required**): resolve student from session; `UrlFetchApp` POST to `https://api.stripe.com/v1/checkout/sessions` (`mode=payment`, `line_items[0][price]=STRIPE_PRICE_ID`, `client_reference_id=student_name`, `customer_email`, `success_url=https://fluentpath.ca/app.html?paid=1`, `cancel_url=https://fluentpath.ca/app.html?paid=0`). Return `{url}`; frontend redirects. **Note:** the app lives at `app.html` (the brochure landing page owns `/`), so both URLs must target `app.html` — a bare `https://fluentpath.ca/?paid=1` would drop the student on the marketing page, not back into the course. (`UrlFetchApp` already authorized — `authorizeScript` 2234.) **URL-encode** every value when assembling the form body (`encodeURIComponent`) — `student_name`/email can contain spaces or accents that would otherwise corrupt the request.
 - **Webhook receiver:** in `doPost` (2175), **before** the auth block, detect `params.stripe==='1'` and branch/return early (skipping `validateToken`). On `checkout.session.completed`: **re-fetch** `GET /v1/checkout/sessions/{id}` with `STRIPE_SECRET`, confirm `payment_status==='paid'`, then set `paid=true, paid_at, stripe_customer_id` via `upsertByStudent` + `cacheInvalidateStudent`. Implement `verifyStripeSignature(payload, sigHeader)` (HMAC via `Utilities.computeHmacSha256Signature`) for defense-in-depth + tests. Return plain `200`. **Idempotency:** Stripe retries on any non-`200`, so the handler must be safe to run repeatedly — `upsertByStudent` already overwrites in place (no duplicate rows), and the handler must return `200` even when `paid` is already true (re-confirming a paid session is a no-op, not an error).
-- **Paywall flow:** new `#screen-paywall` in `index.html`; when `progress.course_unlocked` is false and the student opens the course, show paywall → POST `create_checkout` → redirect. On return (`?paid=1`) poll `get_progress` a few times (webhook lag); never trust the query param for unlock.
+- **Paywall flow:** the `#screen-paywall` in `app.html` (the student app; already stubbed there); when `progress.course_unlocked` is false and the student opens the course, show paywall → POST `create_checkout` → redirect. On return (`?paid=1`) poll `get_progress` a few times (webhook lag); never trust the query param for unlock.
 
 ## Phase 4 — Frontend login & shared JS
 - `config.js`: **remove** `FP.TEACHER_TOKEN`; keep `FP.APP_TOKEN`. Fix `FP.ENV` to treat `fluentpath.ca`/`teacher.fluentpath.ca` as production (replace hardcoded `sgalindo88.github.io` at line 13). Add `FP.IS_TEACHER_SITE = location.hostname.startsWith('teacher.')`, `FP.STUDENT_URL='https://fluentpath.ca'`, `FP.TEACHER_URL='https://teacher.fluentpath.ca'`, and `FP.KEYS.SESSION/SESSION_EXP/ROLE`.
 - `api.js`: in `_appendToken` (55) and `postForm`/`postJson` (93-132) keep `token`, **drop `teacher_token`**, inject `session` from localStorage. Add a 401/`Unauthorized` interceptor that clears the session and redirects to the site's login.
-- **Student login** (`index.html` + `hub.js`): convert `#screen-welcome` to email+password; rewrite `enterHub()` (`hub.js:29`) to POST `login`, store session/role/exp/name, then `fetchProgress` using the **server-returned** name. Auto-login when a non-expired session exists; logout → POST `logout`. Add "For teachers" link → `FP.TEACHER_URL`. `student-test.js`/`student-lesson.js` keep reading `fp_student_name` but guard: no valid session → redirect to login.
+- **Student login** (`app.html` + `hub.js`): convert `#screen-welcome` to email+password; rewrite `enterHub()` (`hub.js:29`) to POST `login`, store session/role/exp/name, then `fetchProgress` using the **server-returned** name. Auto-login when a non-expired session exists; logout → POST `logout`. (The public "For teachers →" link already lives on the brochure landing page at `index.html`; the in-app login screen can keep one too → `FP.TEACHER_URL`.) `student-test.js`/`student-lesson.js` keep reading `fp_student_name` but guard: no valid session → redirect to login.
 - **Teacher login** (teacher subdomain): `teacher.html` becomes the login page (must return `role==='teacher'`) → student picker; auto-login + logout. `examiner-panel.js` init (`2247`) requires a teacher session or redirects. Add **"Create student account"** UI (→ `create_account`) and the **grant-access toggle** (→ `update_settings` with `access_granted`).
 
 ## Phase 5 — Two-repo GitHub Pages split + shared-code sync
@@ -109,7 +110,7 @@ FluentPath (static HTML/CSS/vanilla JS on GitHub Pages, backed by Google Apps Sc
 - **CI** (`.github/workflows/ci.yml`): a `sync-teacher` job runs on push to `master`, checks out the teacher repo via `TEACHER_REPO_TOKEN`, runs the sync, and commits/pushes if changed. **Dormant until opted in** — gated on repo variables `ENABLE_TEACHER_SYNC=true` and `TEACHER_REPO_SLUG=<owner>/<repo>` (so it never breaks CI before the teacher repo exists). The cross-repo push needs a credential the default `GITHUB_TOKEN` can't provide — a fine-grained PAT / deploy key with write access to the teacher repo, stored as the `TEACHER_REPO_TOKEN` secret.
 - **Student `sw.js` is now student-scoped** (`APP_SHELL` no longer lists `teacher.html`/`examiner-panel.*`/`teacher-portal.js`). Change is dormant until the `CACHE_VERSION` bump at cutover (`sw.js` install only re-runs on a version change). No teacher→student relative links exist; the only cross-site link is student→teacher via `FP.TEACHER_URL`.
 
-**Still manual at the physical split (Phase 6):** create the teacher GitHub repo; move the teacher-only files (`teacher.html`, `src/examiner-panel.html`, `examiner-panel.js`, `teacher-portal.js`, their CSS) out of this repo into it; run `npm run sync --dest=<teacher repo>` once to seed the shared/generated files; `git mv app.html index.html` here; set both `CNAME`s and the `ENABLE_TEACHER_SYNC`/`TEACHER_REPO_SLUG` vars + `TEACHER_REPO_TOKEN` secret.
+**Still manual at the physical split (Phase 6):** create the teacher GitHub repo; move the teacher-only files (`teacher.html`, `src/examiner-panel.html`, `examiner-panel.js`, `teacher-portal.js`, their CSS) out of this repo into it; run `npm run sync --dest=<teacher repo>` once to seed the shared/generated files; set both `CNAME`s and the `ENABLE_TEACHER_SYNC`/`TEACHER_REPO_SLUG` vars + `TEACHER_REPO_TOKEN` secret.
 
 ## Phase 6 — Migration & cutover (manual checklist — do NOT script blindly)
 
@@ -149,7 +150,7 @@ Keep existing 45 green (22 in `apps-script.test.js` + 23 in `utils.test.js`); `n
 - **`apps-script.js`** — accounts/sessions/hashing, `login`/`logout`/`create_account`, `resolveSession`, reworked `validateTeacherToken`, `Settings` columns + `isCourseUnlocked` + gating in `save_progress`/`generate_lesson`/`handleGetProgress`, Stripe `create_checkout` + webhook, URL Script Properties. (Anchors: `153-187, 506-542, 575-624, 2033-2225`.)
 - **`src/scripts/config.js`** — remove teacher token, fix `FP.ENV`/domains, add session keys + site URLs.
 - **`src/scripts/api.js`** — drop `teacher_token`, inject `session`, 401 handling (`55, 93-132`).
-- **`index.html` + `src/scripts/hub.js`** — student login, auto-login/logout, paywall screen, "For teachers" link.
+- **`app.html` + `src/scripts/hub.js`** — student login, auto-login/logout, paywall screen. (`index.html` is the public brochure landing page and already carries the "Student login" / "Teacher login" links — it needs no auth wiring.)
 - **`teacher.html` + `src/scripts/teacher-portal.js` + `src/scripts/examiner-panel.js`** — teacher login gate, create-account + grant-access UI (init `2247`).
 - **`src/scripts/student-test.js` / `src/scripts/student-lesson.js`** — session guard/redirect.
 - **`sw.js`** (both repos) — per-repo app shell, `CACHE_VERSION` bump.

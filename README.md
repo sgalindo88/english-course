@@ -15,7 +15,7 @@ Two audiences -- **students** taking tests and completing lessons, and **teacher
 - [Architecture Overview](#architecture-overview)
 - [Project Structure](#project-structure)
 - [File Descriptions](#file-descriptions)
-  - [index.html -- Student Hub](#1-indexhtml--student-hub)
+  - [app.html -- Student Hub](#1-apphtml--student-hub)
   - [teacher.html -- Teacher Portal](#2-teacherhtml--teacher-portal)
   - [student-initial-test.html -- Placement Test](#3-student-initial-testhtml--placement-test)
   - [student-course.html -- Daily Lesson](#4-student-coursehtml--daily-lesson)
@@ -34,8 +34,10 @@ Two audiences -- **students** taking tests and completing lessons, and **teacher
 ## Architecture Overview
 
 ```
+  index.html (public landing/brochure at /) ──→ app.html
+
   ┌──────────────────┐          ┌──────────────────┐
-  │   index.html     │          │  teacher.html     │
+  │    app.html      │          │  teacher.html     │
   │  (Student Hub)   │          │ (Teacher Portal)  │
   └────────┬─────────┘          └────────┬──────────┘
            │                             │
@@ -75,7 +77,8 @@ Two audiences -- **students** taking tests and completing lessons, and **teacher
 
 ```
 fluentpath/
-├── index.html                     # Student app (login → hub → journey)
+├── index.html                     # Public landing/brochure page (the entry point at /)
+├── app.html                       # Student app (login → hub → journey)
 ├── sw.js                          # Service worker (offline resilience, app shell)
 ├── CNAME                          # Custom domain (fluentpath.ca)
 ├── apps-script.js                 # Google Apps Script backend (deploy via clasp)
@@ -110,9 +113,11 @@ fluentpath/
 
 ## File Descriptions
 
-### 1. `index.html` -- Student Hub
+### 1. `app.html` -- Student Hub
 
-**Purpose:** Central landing portal for students. Name-based login, fetches progress from Google Sheets, and displays a journey timeline pointing the student to their next action.
+> **Entry point note:** `fluentpath.ca/` serves `index.html`, a self-contained public **landing/brochure page** (what FluentPath is, how it works, pricing, and **Student login** / **Teacher login** buttons — no app dependencies, inline CSS). Its "Student login" button links to `app.html`, the student app described here.
+
+**Purpose:** The student app. Name-based login, fetches progress from Google Sheets, and displays a journey timeline pointing the student to their next action.
 
 #### Screens
 
@@ -397,7 +402,7 @@ Print-inspired, academic, warm -- designed to feel calm and professional for adu
 
 | File | Direction | Data |
 |------|-----------|------|
-| `index.html` | Sends / Receives | Student progress + teacher settings; auto-registers new students in Students tab |
+| `app.html` | Sends / Receives | Student progress + teacher settings; auto-registers new students in Students tab |
 | `teacher.html` | Receives | Student list from Students tab (via `get_students`) |
 | `student-initial-test.html` | Sends | Test answers, scores, timing |
 | `student-course.html` | Sends / Receives | Lesson requests, approval polling, completion data |
@@ -438,7 +443,7 @@ Students request a call via a floating "Request a Video Call" button; the teache
 
 | File | Mechanism |
 |------|-----------|
-| `index.html` | "Request a Video Call" floating button (via `call-request.js`) |
+| `app.html` | "Request a Video Call" floating button (via `call-request.js`) |
 | `student-initial-test.html` | "Request a Video Call" floating button (via `call-request.js`) |
 | `student-course.html` | "Request a Video Call" floating button (via `call-request.js`) |
 | `examiner-panel.html` | Pending-request panel + Send Link / Mark as Done controls |

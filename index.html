@@ -3,138 +3,275 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FluentPath · Your Journey to Fluency</title>
-<link rel="stylesheet" href="src/styles/theme.css">
-<link rel="stylesheet" href="src/styles/hub.css">
-<link rel="stylesheet" href="src/styles/mobile.css">
+<title>FluentPath · English for life in a new country</title>
+<meta name="description" content="FluentPath is one-on-one English tutoring for adult immigrants — a free placement test, a personalised daily course, and live calls with a real teacher.">
+<meta name="theme-color" content="#1a1208">
+<meta property="og:title" content="FluentPath · English for life in a new country">
+<meta property="og:description" content="One-on-one English tutoring for adult immigrants. Free placement test, personalised daily lessons, and a real teacher.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://fluentpath.ca/">
+
+<!-- Self-contained brochure: inline styles, no app dependencies.
+     The student app lives at /app.html; the teacher portal at teacher.fluentpath.ca. -->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,600&display=swap');
+
+  :root {
+    --ink: #1a1208;
+    --paper: #f5f0e8;
+    --cream: #ede8dc;
+    --rust: #b8471e;
+    --gold: #c9933a;
+    --rule: #c8bfa8;
+    --muted: #5a5040;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Source Serif 4', Georgia, serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--rust); }
+
+  :focus-visible { outline: 2px solid var(--rust); outline-offset: 3px; }
+
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    text-align: center;
+    padding: 64px 0 40px;
+  }
+
+  .wordmark {
+    font-family: 'Playfair Display', serif;
+    font-weight: 700;
+    font-size: clamp(44px, 11vw, 68px);
+    line-height: 1;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .wordmark .accent { color: var(--rust); }
+
+  .tagline {
+    font-style: italic;
+    font-size: clamp(18px, 4.5vw, 23px);
+    color: var(--muted);
+    margin: 18px auto 0;
+    max-width: 30ch;
+  }
+
+  .divider {
+    width: 64px;
+    height: 2px;
+    background: var(--gold);
+    border: 0;
+    margin: 32px auto 0;
+  }
+
+  .intro {
+    text-align: center;
+    font-size: clamp(17px, 4vw, 19px);
+    margin: 28px auto 0;
+    max-width: 46ch;
+  }
+
+  /* ── Buttons ── */
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    justify-content: center;
+    margin: 40px 0 8px;
+  }
+
+  .btn {
+    display: inline-block;
+    text-decoration: none;
+    font-family: 'Playfair Display', serif;
+    font-size: 18px;
+    font-style: italic;
+    padding: 15px 30px;
+    border-radius: 4px;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+    border: 2px solid var(--ink);
+  }
+  .btn-primary {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .btn-primary:hover { background: var(--rust); border-color: var(--rust); }
+  .btn-secondary {
+    background: transparent;
+    color: var(--ink);
+  }
+  .btn-secondary:hover { background: var(--cream); }
+
+  /* ── How it works ── */
+  section { padding: 8px 0; }
+
+  .section-title {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(26px, 6vw, 32px);
+    text-align: center;
+    margin: 56px 0 8px;
+  }
+
+  .steps {
+    list-style: none;
+    counter-reset: step;
+    padding: 0;
+    margin: 28px 0 0;
+  }
+  .step {
+    counter-increment: step;
+    position: relative;
+    padding: 22px 0 22px 64px;
+    border-top: 1px solid var(--rule);
+  }
+  .step:last-child { border-bottom: 1px solid var(--rule); }
+  .step::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--cream);
+    border: 1px solid var(--rule);
+    color: var(--rust);
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step h3 {
+    font-family: 'Playfair Display', serif;
+    font-weight: 700;
+    font-size: 21px;
+    margin: 2px 0 4px;
+  }
+  .step p { margin: 0; color: var(--muted); }
+
+  /* ── Pricing note ── */
+  .pricing {
+    background: var(--cream);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 28px 26px;
+    text-align: center;
+    margin: 48px 0 0;
+  }
+  .pricing h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 23px;
+    margin: 0 0 8px;
+  }
+  .pricing p { margin: 6px auto 0; max-width: 44ch; color: var(--muted); }
+  .badge {
+    display: inline-block;
+    margin-top: 16px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    background: var(--gold);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 56px 0 48px;
+    margin-top: 56px;
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: 15px;
+  }
+  footer .teacher-link { display: block; margin-top: 6px; }
+
+  @media (max-width: 520px) {
+    .actions { flex-direction: column; }
+    .btn { width: 100%; text-align: center; }
+  }
+</style>
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════════════════
-     SCREEN 1 — Welcome / Login
-     ═══════════════════════════════════════════════════════════ -->
-<div id="screen-welcome" class="screen active">
-  <div class="container">
-    <div class="welcome-header">
-      <h1>Fluent<span class="accent">Path</span></h1>
-      <p>Your journey to fluency starts here.</p>
-      <div class="welcome-divider"></div>
+<main class="wrap">
+
+  <!-- ── Hero ── -->
+  <header class="hero">
+    <h1 class="wordmark">Fluent<span class="accent">Path</span></h1>
+    <p class="tagline">English for your life in a new country.</p>
+    <hr class="divider">
+    <p class="intro">
+      One-on-one English tutoring built for working adults. Learn with a real
+      teacher, at your own pace, around your own schedule — no classrooms, no
+      rigid timetables.
+    </p>
+
+    <div class="actions">
+      <a class="btn btn-primary" href="app.html">Student login</a>
+      <a class="btn btn-secondary" href="https://teacher.fluentpath.ca">Teacher login</a>
     </div>
+  </header>
 
-    <div class="login-card">
-      <label for="loginEmail">Email</label>
-      <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="username" aria-label="Email">
-      <label for="loginPassword" style="display:block;margin-top:14px;">Password</label>
-      <input type="password" id="loginPassword" placeholder="Your password" autocomplete="current-password" aria-label="Password">
-      <p class="login-hint" id="loginError" style="display:none;color:var(--rust);"></p>
-      <p class="login-hint">Use the email and password your teacher gave you.</p>
+  <!-- ── How it works ── -->
+  <section>
+    <h2 class="section-title">How it works</h2>
+    <ol class="steps">
+      <li class="step">
+        <h3>Take the free placement test</h3>
+        <p>A short test across reading, writing, listening and speaking finds your
+           level — completely free, no payment needed.</p>
+      </li>
+      <li class="step">
+        <h3>Follow your personalised course</h3>
+        <p>A structured daily course is tailored to your level, with a new lesson
+           each day you can fit around work and family.</p>
+      </li>
+      <li class="step">
+        <h3>Meet your teacher one-on-one</h3>
+        <p>Your teacher marks your work, tracks your progress, and is available for
+           live video calls whenever you need a hand.</p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ── Pricing ── -->
+  <section>
+    <div class="pricing">
+      <h3>Simple, one-time pricing</h3>
+      <p>The placement test is always free. When you're ready, a single one-time
+         payment unlocks your full course — permanently, with no subscription.</p>
+      <span class="badge">Payments coming soon</span>
     </div>
+  </section>
 
-    <button class="btn-enter" id="btnEnter" onclick="enterHub()">Log In</button>
+  <!-- ── Footer ── -->
+  <footer>
+    <p>A <strong>Fluentora</strong> programme.</p>
+    <a class="teacher-link" href="https://teacher.fluentpath.ca">For teachers &rarr;</a>
+  </footer>
 
-    <div class="welcome-footer">
-      <p><a href="#" onclick="FP.passwordReset.openForgot();return false;">Forgot password?</a></p>
-      <p><a href="#" id="teacherLink">For teachers &rarr;</a></p>
-      <p>A <a href="#">Fluentora</a> programme</p>
-    </div>
-  </div>
-</div>
+</main>
 
-<!-- ═══════════════════════════════════════════════════════════
-     SCREEN — Paywall (gated daily course; placement test is free)
-     ═══════════════════════════════════════════════════════════ -->
-<div id="screen-paywall" class="screen">
-  <div class="container">
-    <div class="welcome-header">
-      <h1>Unlock Your Course</h1>
-      <p>Full access to your personalised daily lessons.</p>
-      <div class="welcome-divider"></div>
-    </div>
-
-    <div class="login-card">
-      <p>Your placement test is free. To begin your daily lessons, a one-time
-         payment unlocks the full course — permanently.</p>
-      <p class="login-hint" id="paywallError" style="display:none;color:var(--rust);"></p>
-    </div>
-
-    <button class="btn-enter" id="btnPay" onclick="startCheckout()">Continue to Payment</button>
-
-    <div class="welcome-footer">
-      <p><a href="#" onclick="showScreen('screen-dashboard');return false;">&larr; Back to my journey</a></p>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════
-     SCREEN 2 — Loading
-     ═══════════════════════════════════════════════════════════ -->
-<div id="screen-loading" class="screen">
-  <div class="container loading-center">
-    <div class="spinner"></div>
-    <p style="color:var(--muted);font-style:italic;">Looking up your progress&hellip;</p>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════
-     SCREEN 3 — Dashboard
-     ═══════════════════════════════════════════════════════════ -->
-<div id="screen-dashboard" class="screen">
-  <div class="container">
-
-    <div class="dash-header">
-      <p class="dash-greeting">Welcome back,</p>
-      <h1 class="dash-name" id="dashName"></h1>
-      <p class="dash-subtitle" id="dashSubtitle">Here is your learning journey.</p>
-      <span class="dash-logout" onclick="logout()">Not you? Switch student</span>
-    </div>
-
-    <!-- ── Journey Timeline ── -->
-    <div class="journey">
-
-      <!-- Milestone 1: Placement Test -->
-      <div class="milestone" id="ms-test">
-        <div class="milestone-dot">1</div>
-        <div class="milestone-label">Phase One</div>
-        <div class="milestone-title">Placement Test</div>
-        <div class="milestone-desc" id="ms-test-desc">Take the English proficiency test so your teacher can find the right level for you.</div>
-        <div class="milestone-card" id="ms-test-card" style="display:none;"></div>
-      </div>
-
-      <!-- Milestone 2: Level Assignment -->
-      <div class="milestone" id="ms-level">
-        <div class="milestone-dot">2</div>
-        <div class="milestone-label">Phase One</div>
-        <div class="milestone-title">Your Level</div>
-        <div class="milestone-desc" id="ms-level-desc">After your teacher reviews the test, you will be assigned a CEFR level.</div>
-        <div class="milestone-card" id="ms-level-card" style="display:none;"></div>
-      </div>
-
-      <!-- Milestone 3: Course -->
-      <div class="milestone" id="ms-course">
-        <div class="milestone-dot">3</div>
-        <div class="milestone-label">Phase Two</div>
-        <div class="milestone-title">Your Course</div>
-        <div class="milestone-desc" id="ms-course-desc">A 20-day personalised course with daily lessons tailored to your level.</div>
-        <div class="milestone-card" id="ms-course-card" style="display:none;"></div>
-      </div>
-
-    </div>
-
-    <!-- ── CTA Section ── -->
-    <div class="cta-section" id="ctaSection"></div>
-
-    <!-- ── Achievements ── -->
-    <div id="achievementsSection" style="display:none;"></div>
-
-  </div>
-</div>
-
-<script src="src/scripts/config.js"></script>
-<script src="src/scripts/api.js"></script>
-<script src="src/scripts/utils.js"></script>
-<script src="src/scripts/hub.js"></script>
-<script src="src/scripts/call-request.js"></script>
-<script src="src/scripts/i18n.js"></script>
-<script src="src/scripts/password-reset.js"></script>
 </body>
 </html>
