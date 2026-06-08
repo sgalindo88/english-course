@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="FluentPath">
+  <rect width="100" height="100" rx="20" fill="#1a1208"/>
+  <!-- Serif "F" in paper, then a rust top bar (the "Path" accent) drawn over it -->
+  <rect x="34" y="22" width="13" height="56" fill="#f5f0e8"/>
+  <rect x="28" y="72" width="25" height="6" fill="#f5f0e8"/>
+  <rect x="34" y="46" width="27" height="12" fill="#f5f0e8"/>
+  <rect x="34" y="22" width="38" height="13" fill="#b8471e"/>
+</svg>
