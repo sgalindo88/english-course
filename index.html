@@ -12,7 +12,7 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://fluentpath.ca/">
 
-<!-- Self-contained brochure: inline styles, no app dependencies.
+<!-- Self-contained brochure: inline styles + inline i18n, no app dependencies.
      The student app lives at /app.html; the teacher portal at teacher.fluentpath.ca. -->
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,600&display=swap');
@@ -44,6 +44,52 @@
 
   :focus-visible { outline: 2px solid var(--rust); outline-offset: 3px; }
 
+  /* ── Header ── */
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--paper);
+    border-bottom: 1px solid var(--rule);
+  }
+  .site-header .bar {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 13px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 18px;
+    flex-wrap: wrap;
+  }
+  .nav-access {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 15px;
+  }
+  .nav-access a {
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    padding-bottom: 1px;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .nav-access a:hover { color: var(--rust); border-bottom-color: var(--rust); }
+  .nav-sep { color: var(--rule); }
+  .lang-toggle {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 14px;
+    letter-spacing: 0.02em;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 4px 13px;
+    white-space: nowrap;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .lang-toggle:hover { color: var(--rust); border-color: var(--rust); }
+
   .wrap {
     max-width: 720px;
     margin: 0 auto;
@@ -53,7 +99,7 @@
   /* ── Hero ── */
   .hero {
     text-align: center;
-    padding: 64px 0 40px;
+    padding: 52px 0 36px;
   }
 
   .wordmark {
@@ -89,37 +135,6 @@
     max-width: 46ch;
   }
 
-  /* ── Buttons ── */
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px;
-    justify-content: center;
-    margin: 40px 0 8px;
-  }
-
-  .btn {
-    display: inline-block;
-    text-decoration: none;
-    font-family: 'Playfair Display', serif;
-    font-size: 18px;
-    font-style: italic;
-    padding: 15px 30px;
-    border-radius: 4px;
-    transition: background 0.2s, color 0.2s, border-color 0.2s;
-    border: 2px solid var(--ink);
-  }
-  .btn-primary {
-    background: var(--ink);
-    color: var(--paper);
-  }
-  .btn-primary:hover { background: var(--rust); border-color: var(--rust); }
-  .btn-secondary {
-    background: transparent;
-    color: var(--ink);
-  }
-  .btn-secondary:hover { background: var(--cream); }
-
   /* ── How it works ── */
   section { padding: 8px 0; }
 
@@ -127,7 +142,7 @@
     font-family: 'Playfair Display', serif;
     font-size: clamp(26px, 6vw, 32px);
     text-align: center;
-    margin: 56px 0 8px;
+    margin: 48px 0 8px;
   }
 
   .steps {
@@ -199,58 +214,64 @@
   /* ── Footer ── */
   footer {
     text-align: center;
-    padding: 56px 0 48px;
+    padding: 52px 0 48px;
     margin-top: 56px;
     border-top: 1px solid var(--rule);
     color: var(--muted);
     font-size: 15px;
   }
-  footer .teacher-link { display: block; margin-top: 6px; }
 
-  @media (max-width: 520px) {
-    .actions { flex-direction: column; }
-    .btn { width: 100%; text-align: center; }
+  @media (max-width: 480px) {
+    .site-header .bar { padding: 11px 18px; }
+    .nav-access { font-size: 13.5px; gap: 8px; }
   }
 </style>
 </head>
 <body>
 
+<!-- ── Top header: access links (left) + language toggle (right) ── -->
+<header class="site-header">
+  <div class="bar">
+    <nav class="nav-access" aria-label="Access">
+      <a href="app.html" data-i18n="navStudent">Student Access</a>
+      <span class="nav-sep" aria-hidden="true">|</span>
+      <a href="https://teacher.fluentpath.ca" data-i18n="navTeacher">Teacher Access</a>
+    </nav>
+    <a id="langToggle" class="lang-toggle" href="?lang=es" hreflang="es">Español</a>
+  </div>
+</header>
+
 <main class="wrap">
 
   <!-- ── Hero ── -->
-  <header class="hero">
+  <div class="hero">
     <h1 class="wordmark">Fluent<span class="accent">Path</span></h1>
-    <p class="tagline">English for your life in a new country.</p>
+    <p class="tagline" data-i18n="tagline">English for your life in a new country.</p>
     <hr class="divider">
-    <p class="intro">
+    <p class="intro" data-i18n="intro">
       One-on-one English tutoring built for working adults. Learn with a real
       teacher, at your own pace, around your own schedule — no classrooms, no
       rigid timetables.
     </p>
-
-    <div class="actions">
-      <a class="btn btn-primary" href="app.html">Student login</a>
-      <a class="btn btn-secondary" href="https://teacher.fluentpath.ca">Teacher login</a>
-    </div>
-  </header>
+  </div>
 
   <!-- ── How it works ── -->
   <section>
-    <h2 class="section-title">How it works</h2>
+    <h2 class="section-title" data-i18n="howTitle">How it works</h2>
     <ol class="steps">
       <li class="step">
-        <h3>Take the free placement test</h3>
-        <p>A short test across reading, writing, listening and speaking finds your
+        <h3 data-i18n="step1Title">Take the free placement test</h3>
+        <p data-i18n="step1Body">A short test across reading, writing, listening and speaking finds your
            level — completely free, no payment needed.</p>
       </li>
       <li class="step">
-        <h3>Follow your personalised course</h3>
-        <p>A structured daily course is tailored to your level, with a new lesson
+        <h3 data-i18n="step2Title">Follow your personalised course</h3>
+        <p data-i18n="step2Body">A structured daily course is tailored to your level, with a new lesson
            each day you can fit around work and family.</p>
       </li>
       <li class="step">
-        <h3>Meet your teacher one-on-one</h3>
-        <p>Your teacher marks your work, tracks your progress, and is available for
+        <h3 data-i18n="step3Title">Meet your teacher one-on-one</h3>
+        <p data-i18n="step3Body">Your teacher marks your work, tracks your progress, and is available for
            live video calls whenever you need a hand.</p>
       </li>
     </ol>
@@ -259,20 +280,117 @@
   <!-- ── Pricing ── -->
   <section>
     <div class="pricing">
-      <h3>Simple, one-time pricing</h3>
-      <p>The placement test is always free. When you're ready, a single one-time
+      <h3 data-i18n="priceTitle">Simple, one-time pricing</h3>
+      <p data-i18n="priceBody">The placement test is always free. When you're ready, a single one-time
          payment unlocks your full course — permanently, with no subscription.</p>
-      <span class="badge">Payments coming soon</span>
+      <span class="badge" data-i18n="priceBadge">Payments coming soon</span>
     </div>
   </section>
 
   <!-- ── Footer ── -->
   <footer>
-    <p>A <strong>Fluentora</strong> programme.</p>
-    <a class="teacher-link" href="https://teacher.fluentpath.ca">For teachers &rarr;</a>
+    <p data-i18n-html="footer">A <strong>Fluentora</strong> programme.</p>
   </footer>
 
 </main>
+
+<script>
+(function () {
+  // Inline two-language dictionary. Keys map to [data-i18n] / [data-i18n-html]
+  // elements; meta keys (leading _) drive <title>, <html lang>, and the toggle.
+  var I18N = {
+    en: {
+      _title: 'FluentPath · English for your life in a new country',
+      _lang: 'en',
+      _toggle: 'Español',
+      _toggleAria: 'Cambiar a español',
+      navStudent: 'Student Access',
+      navTeacher: 'Teacher Access',
+      tagline: 'English for your life in a new country.',
+      intro: 'One-on-one English tutoring built for working adults. Learn with a real teacher, at your own pace, around your own schedule — no classrooms, no rigid timetables.',
+      howTitle: 'How it works',
+      step1Title: 'Take the free placement test',
+      step1Body: 'A short test across reading, writing, listening and speaking finds your level — completely free, no payment needed.',
+      step2Title: 'Follow your personalised course',
+      step2Body: 'A structured daily course is tailored to your level, with a new lesson each day you can fit around work and family.',
+      step3Title: 'Meet your teacher one-on-one',
+      step3Body: 'Your teacher marks your work, tracks your progress, and is available for live video calls whenever you need a hand.',
+      priceTitle: 'Simple, one-time pricing',
+      priceBody: "The placement test is always free. When you're ready, a single one-time payment unlocks your full course — permanently, with no subscription.",
+      priceBadge: 'Payments coming soon',
+      footer: 'A <strong>Fluentora</strong> programme.'
+    },
+    es: {
+      _title: 'FluentPath · Inglés para tu vida en un nuevo país',
+      _lang: 'es',
+      _toggle: 'English',
+      _toggleAria: 'Switch to English',
+      navStudent: 'Acceso de estudiantes',
+      navTeacher: 'Acceso de profesores',
+      tagline: 'Inglés para tu vida en un nuevo país.',
+      intro: 'Clases de inglés individuales pensadas para adultos que trabajan. Aprende con un profesor de verdad, a tu propio ritmo y según tu horario — sin aulas ni horarios rígidos.',
+      howTitle: 'Cómo funciona',
+      step1Title: 'Haz la prueba de nivel gratis',
+      step1Body: 'Una prueba corta de lectura, escritura, comprensión auditiva y expresión oral determina tu nivel — totalmente gratis, sin pagar nada.',
+      step2Title: 'Sigue tu curso personalizado',
+      step2Body: 'Un curso diario y estructurado se adapta a tu nivel, con una lección nueva cada día que puedes encajar entre el trabajo y la familia.',
+      step3Title: 'Reúnete con tu profesor uno a uno',
+      step3Body: 'Tu profesor corrige tu trabajo, sigue tu progreso y está disponible para videollamadas en vivo siempre que necesites ayuda.',
+      priceTitle: 'Precio simple, un solo pago',
+      priceBody: 'La prueba de nivel siempre es gratis. Cuando estés listo, un único pago desbloquea tu curso completo — para siempre, sin suscripción.',
+      priceBadge: 'Pagos próximamente',
+      footer: 'Un programa de <strong>Fluentora</strong>.'
+    }
+  };
+
+  var KEY = 'fp_lang';
+
+  function resolveLang() {
+    var p = new URLSearchParams(location.search).get('lang');
+    if (p === 'es' || p === 'en') return p;
+    try { var saved = localStorage.getItem(KEY); if (saved === 'es' || saved === 'en') return saved; } catch (e) {}
+    return (navigator.language || '').toLowerCase().indexOf('es') === 0 ? 'es' : 'en';
+  }
+
+  function apply(lang) {
+    var T = I18N[lang] || I18N.en;
+    document.documentElement.lang = T._lang;
+    document.title = T._title;
+
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var v = T[el.getAttribute('data-i18n')];
+      if (v != null) el.textContent = v;
+    });
+    document.querySelectorAll('[data-i18n-html]').forEach(function (el) {
+      var v = T[el.getAttribute('data-i18n-html')];
+      if (v != null) el.innerHTML = v; // trusted static strings only
+    });
+
+    var toggle = document.getElementById('langToggle');
+    if (toggle) {
+      var next = lang === 'es' ? 'en' : 'es';
+      toggle.textContent = T._toggle;
+      toggle.setAttribute('href', '?lang=' + next);
+      toggle.setAttribute('hreflang', next);
+      toggle.setAttribute('aria-label', T._toggleAria);
+    }
+    try { localStorage.setItem(KEY, lang); } catch (e) {}
+  }
+
+  var current = resolveLang();
+  apply(current);
+
+  var toggle = document.getElementById('langToggle');
+  if (toggle) {
+    toggle.addEventListener('click', function (e) {
+      e.preventDefault();
+      current = current === 'es' ? 'en' : 'es';
+      apply(current);
+      try { history.replaceState(null, '', current === 'en' ? location.pathname : '?lang=es'); } catch (err) {}
+    });
+  }
+})();
+</script>
 
 </body>
 </html>
